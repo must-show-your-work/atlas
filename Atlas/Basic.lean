@@ -60,7 +60,6 @@ initialize atlasExt : SimplePersistentEnvExtension AtlasRow AtlasState ←
     addImportedFn := fun arr =>
       arr.foldl (init := ({} : AtlasState)) fun s sub =>
         sub.foldl insertEntry s
-    asyncMode     := .sync
   }
 
 /-- Walk `getModuleEntries` for every imported module and fold the

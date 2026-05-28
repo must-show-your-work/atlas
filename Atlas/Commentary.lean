@@ -17,7 +17,7 @@ then the `command_elab` is registered in a second `namespace Atlas`
 block. Don't merge — the scoped tokens won't bind correctly otherwise.
 
 Depends on `Atlas/Basic.lean` (atlasExt for dump-time lookup),
-`Atlas/Number.lean` (atlasNum + scientificAtomText).
+`Atlas/Number.lean` (`atlasNumLit` parser + `atlasNumToString?` extraction).
 -/
 
 import Lean

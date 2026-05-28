@@ -162,10 +162,19 @@ private partial def collectAtlasRefSyntax (stx : Syntax) (acc : Array (String ×
     else acc
   stx.getArgs.foldl (init := acc) fun acc child => collectAtlasRefSyntax child acc
 
-/-- Look up an atlas decl by (kind, number) via the live env. -/
+/-- Look up an atlas decl by (kind, number) via the live env, mirroring
+`ref kind N` semantics in `Atlas/Ref.lean` (cascading tier lookup). The
+panel should display whichever decl the user's `ref` would actually
+resolve to — so if `proposition 3.4` falls through to a corollary, the
+panel reflects that.
+
+For ambiguous multi-match cases, picks the tier-preferred first match.
+This is best-effort: live `ref` resolution at elab time uses the
+expected-type-driven choice node to disambiguate, which we don't have
+for a syntactic panel walk. -/
 private def resolveAtlasRef (env : Environment) (kindStr numStr : String) :
     Option (Name × Atlas.AtlasEntry) :=
-  let candidates := Atlas.atlasLookupByNumber env kindStr numStr
+  let candidates := Atlas.atlasLookupCascading env kindStr numStr
   candidates.head?.bind fun n => (Atlas.atlasEntry? env n).map ((n, ·))
 
 /-- Shared Html-builder; renders each ref's type via `ppDeclType`, so

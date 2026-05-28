@@ -37,11 +37,7 @@ abbrev DocComment? := Option (TSyntax ``Lean.Parser.Command.docComment)
 
 /-- Generate `@[atlas "kind" "num" "title"] theorem «title» <binders> : type := body`,
     prepending an optional doc comment so the macro can be preceded by
-    `/-- … -/` like any builtin theorem. Helpers take `numStr : String`
-    directly — callers either feed `← atlasNumToString n` (numbered
-    form) or `""` (un-numbered form). The attribute hook treats empty
-    string as "no book number" and skips the (kind, number) duplicate
-    check accordingly. -/
+    `/-- … -/` like any builtin theorem. -/
 private def expandAtlasTheorem
     (kind : String) (numStr : String)
     (title : TSyntax `str) (binders : BracketedBinders)

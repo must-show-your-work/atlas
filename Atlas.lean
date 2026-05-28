@@ -15,9 +15,14 @@ env-extension API without the syntax category and tactics).
 
 ## Module map
 
-- `Atlas/Basic.lean` — types, env extension, attribute, kind tiers.
-- `Atlas/Number.lean` — `atlasNum` syntax category + canonical render.
-- `Atlas/Command.lean` — `atlas <kind> <num> "Title" : T := body`.
+- `Atlas/Basic.lean` — types, env extension, attribute, kind tiers,
+  `registerArrayExt` helper.
+- `Atlas/Number.lean` — `atlasNumLit` parser + canonical render.
+- `Atlas/Panels.lean` — `with_atlas_panels` tactic syntax token
+  (elab in `Atlas/Refs.lean`); split out so `Atlas/Command.lean`
+  can emit the wrap without pulling in Refs's ProofWidgets stack.
+- `Atlas/Command.lean` — `atlas <kind> <num> "Title" : T := body`,
+  including the panel auto-wrap on tactic-mode bodies.
 - `Atlas/Ref.lean` — term-position `ref kind N` + per-kind shortcuts.
 - `Atlas/Via.lean` — vararg-capturing `via kind N args*` dispatch.
 - `Atlas/Markers.lean` — inline marker tactics (quoting/comment/page
@@ -25,9 +30,8 @@ env-extension API without the syntax category and tactics).
 - `Atlas/Commentary.lean` — `atlas commentary := by …` block.
 - `Atlas/Figure.lean` — `figure := by …` nested field + flip-through
   widget panel for figures attached to atlas decls.
-- `Atlas/Refs.lean` — InfoView panel auto-attached to atlas proofs
-  showing each decl's atlas-tagged citations + an explicit
-  `#refs <name>` command.
+- `Atlas/Refs.lean` — InfoView refs panel elaboration + `#refs <name>`
+  command. Syntax for the panel-wrap lives in `Atlas/Panels.lean`.
 
 ## Usage
 

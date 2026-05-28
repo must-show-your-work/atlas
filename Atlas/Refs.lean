@@ -7,6 +7,7 @@ import Atlas.Command
 import Atlas.Ref
 import Atlas.Via
 import Atlas.Figure
+import Atlas.Panels
 
 /-!
 # `Atlas/Refs.lean` — atlas-refs InfoView panel + macro override
@@ -162,10 +163,19 @@ private partial def collectAtlasRefSyntax (stx : Syntax) (acc : Array (String ×
     else acc
   stx.getArgs.foldl (init := acc) fun acc child => collectAtlasRefSyntax child acc
 
-/-- Look up an atlas decl by (kind, number) via the live env. -/
+/-- Look up an atlas decl by (kind, number) via the live env, mirroring
+`ref kind N` semantics in `Atlas/Ref.lean` (cascading tier lookup). The
+panel should display whichever decl the user's `ref` would actually
+resolve to — so if `proposition 3.4` falls through to a corollary, the
+panel reflects that.
+
+For ambiguous multi-match cases, picks the tier-preferred first match.
+This is best-effort: live `ref` resolution at elab time uses the
+expected-type-driven choice node to disambiguate, which we don't have
+for a syntactic panel walk. -/
 private def resolveAtlasRef (env : Environment) (kindStr numStr : String) :
     Option (Name × Atlas.AtlasEntry) :=
-  let candidates := Atlas.atlasLookupByNumber env kindStr numStr
+  let candidates := Atlas.atlasLookupCascading env kindStr numStr
   candidates.head?.bind fun n => (Atlas.atlasEntry? env n).map ((n, ·))
 
 /-- Shared Html-builder; renders each ref's type via `ppDeclType`, so
@@ -227,21 +237,13 @@ def atlasRefsHtml (name : Name) : MetaM Html := do
   let refs ← atlasRefs name
   buildHtml name refs none
 
-/-- `with_atlas_panels <kind> <num> <tacticSeq>` — wraps a proof in
-the per-decl InfoView panels: the atlas-references panel (syntactically
-scanned from the seq) and the figures panel (looked up by `(kind, num)`
-from `atlasFigureExt`). Both attach to `seq`'s source range so they
-follow the cursor through the proof body.
-
-Auto-injected by the `atlas`-macro override below. Combined into one
-tactic so both panels anchor to the user-positioned `$tacs`; chaining
-two wrappers would put the outer panel on a synthesized inner tacticSeq
-with no source position, hiding it from the InfoView. -/
-scoped syntax (name := withAtlasPanels)
-  "with_atlas_panels" str str tacticSeq : tactic
+-- `with_atlas_panels` syntax token lives in `Atlas/Panels.lean` so
+-- `Atlas/Command.lean` can emit it without pulling in this file's
+-- ProofWidgets dependency. Elaboration stays here — it's what binds the
+-- tactic to the InfoView panel render.
 
 open Elab Tactic in
-@[tactic withAtlasPanels]
+@[tactic Atlas.withAtlasPanels]
 def elabWithAtlasPanels : Tactic := fun stx => match stx with
   | `(tactic| with_atlas_panels $k:str $n:str $seq) => do
     let some declName ← Term.getDeclName?
@@ -278,31 +280,7 @@ def elabRefsCmd : CommandElab := fun stx => do
 
 end Atlas.Refs
 
--- Intercept tactic-bodied `atlas <kind> <num> "<title>" ... := by <tacs>`
--- commands and auto-wrap the body in `with_atlas_refs`. Every atlas proof
--- (theorem-flavored kind) gets the refs panel by default. Term-mode
--- bodies and body-less `atlas axiom` fall through to Atlas's own
--- `macro_rules` via `Macro.throwUnsupported`.
---
--- This `macro_rules` is at top-level (not under `Atlas.Refs`) so it
--- composes with Atlas's other `macro_rules` for the same `atlas`
--- syntax. The expansion references `with_atlas_refs` via hygiene; the
--- consuming module needs `open Atlas` (which is the same prereq as
--- using `atlas commentary` or any other atlas syntax).
-open Lean Atlas Atlas.Refs in
-macro_rules
-  | `($[$doc?:docComment]? atlas $k:ident $n:atlasNumLit $t:str $bs:bracketedBinder* : $ty := by $tacs:tacticSeq) => do
-    let kindStr := k.raw.getId.toString
-    if kindStr == "axiom" || kindStr == "definition" then
-      Macro.throwUnsupported
-    let numStr ← Atlas.atlasNumToString n
-    let kindLit := Syntax.mkStrLit kindStr
-    let numLit := Syntax.mkStrLit numStr
-    let ident := mkIdentFrom t.raw (Name.mkSimple t.getString)
-    let wrappedBody ← `(by with_atlas_panels $kindLit $numLit $tacs)
-    match doc? with
-    | some doc =>
-      `($doc:docComment
-        @[atlas $kindLit $numLit $t] theorem $ident $bs* : $ty := $wrappedBody)
-    | none =>
-      `(@[atlas $kindLit $numLit $t] theorem $ident $bs* : $ty := $wrappedBody)
+-- The panel auto-wrap previously lived here as a parallel `macro_rules`
+-- override. It now lives in `Atlas/Command.lean`'s primary macro_rules
+-- (theorem-arm), driven by the shared `with_atlas_panels` syntax in
+-- `Atlas/Panels.lean`. One place to evolve atlas-decl shape.

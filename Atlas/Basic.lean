@@ -79,6 +79,23 @@ def atlasStateFromImports (env : Environment) : AtlasState := Id.run do
     i := i + 1
   return st
 
+/-! ## Helper for the common-shape array-state extension -/
+
+/-- Register a `SimplePersistentEnvExtension` whose state is an
+`Array α`, entries are `push`ed, and imported per-module arrays are
+flattened with `Array.append`. `asyncMode := .sync` so writes from
+inside tactic-elab survive the elaboration boundary (every Atlas marker
+extension writes from tactics). Used by `Atlas/Markers.lean`,
+`Atlas/Commentary.lean`, and `Atlas/Figure.lean`. -/
+def registerArrayExt {α : Type} (name : Name) :
+    IO (SimplePersistentEnvExtension α (Array α)) :=
+  registerSimplePersistentEnvExtension {
+    name          := name
+    addEntryFn    := fun s e => s.push e
+    addImportedFn := fun arr => arr.foldl (init := (#[] : Array α)) Array.append
+    asyncMode     := .sync
+  }
+
 /-! ## Query helpers (read by `DumpDecls.lean` and the elab rules below) -/
 
 def atlasEntry? (env : Environment) (n : Name) : Option AtlasEntry :=

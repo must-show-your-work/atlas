@@ -18,7 +18,7 @@ adjacent kinds (`corollary 3.3`, etc.) creates spurious type-equivalent
 candidates that defeat dispatch.
 
 Depends on `Atlas/Basic.lean` (lookups), `Atlas/Number.lean`
-(scientificAtomText for the case-analysis).
+(`atlasNumLit` parser + `atlasNumToString?` extraction).
 -/
 
 import Lean

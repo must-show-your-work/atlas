@@ -269,13 +269,7 @@ structure FigureBlock where
 
 initialize atlasFigureExt :
     SimplePersistentEnvExtension FigureBlock (Array FigureBlock) ←
-  registerSimplePersistentEnvExtension {
-    name          := `Atlas.atlasFigureExt
-    addEntryFn    := fun s e => s.push e
-    addImportedFn := fun arr =>
-      arr.foldl (init := (#[] : Array FigureBlock)) Array.append
-    asyncMode     := .sync
-  }
+  registerArrayExt `Atlas.atlasFigureExt
 
 /-- Look up every figure block matching a `(kind, number)` key, ordered
     by the user-supplied `index` (figures without an index sort last,

@@ -30,6 +30,7 @@ dependency in Atlas-core; future plan is to move it into an
 
 import Lean
 import Mathlib.Tactic.Linter.UnusedTacticExtension
+import Atlas.Basic
 
 open Lean Elab Command
 
@@ -88,36 +89,19 @@ structure PageBreakMarker where
   column  : Nat
   deriving Inhabited
 
--- `asyncMode := .sync` is necessary because our `modifyEnv` calls
--- happen *inside tactic elaboration*, which runs on parallel
--- environment branches. The default `.mainOnly` mode silently drops
--- modifications from non-main branches (where our tactics fire),
--- producing empty extension state. `.sync` propagates writes to the
--- checked environment so they survive past the tactic boundary.
+-- All three extensions go through `Atlas.Basic.registerArrayExt`, which
+-- bakes in `asyncMode := .sync` (required: our `modifyEnv` calls happen
+-- inside tactic elab, which runs on parallel env branches; default
+-- `.mainOnly` mode silently drops those writes).
 
 initialize atlasQuotingExt : SimplePersistentEnvExtension QuotingMarker (Array QuotingMarker) ←
-  registerSimplePersistentEnvExtension {
-    name          := `Atlas.atlasQuotingExt
-    addEntryFn    := fun s e => s.push e
-    addImportedFn := fun arr => arr.foldl (init := (#[] : Array QuotingMarker)) Array.append
-    asyncMode     := .sync
-  }
+  registerArrayExt `Atlas.atlasQuotingExt
 
 initialize atlasCommentExt : SimplePersistentEnvExtension CommentMarker (Array CommentMarker) ←
-  registerSimplePersistentEnvExtension {
-    name          := `Atlas.atlasCommentExt
-    addEntryFn    := fun s e => s.push e
-    addImportedFn := fun arr => arr.foldl (init := (#[] : Array CommentMarker)) Array.append
-    asyncMode     := .sync
-  }
+  registerArrayExt `Atlas.atlasCommentExt
 
 initialize atlasPageBreakExt : SimplePersistentEnvExtension PageBreakMarker (Array PageBreakMarker) ←
-  registerSimplePersistentEnvExtension {
-    name          := `Atlas.atlasPageBreakExt
-    addEntryFn    := fun s e => s.push e
-    addImportedFn := fun arr => arr.foldl (init := (#[] : Array PageBreakMarker)) Array.append
-    asyncMode     := .sync
-  }
+  registerArrayExt `Atlas.atlasPageBreakExt
 
 /-- Resolve a syntax position to (line, column). Returns `(0, 0)` if
     position info is missing — shouldn't happen for parsed user syntax
@@ -256,13 +240,7 @@ structure InlineMarker where
 
 initialize atlasInlineMarkerExt :
     SimplePersistentEnvExtension InlineMarker (Array InlineMarker) ←
-  registerSimplePersistentEnvExtension {
-    name          := `Atlas.atlasInlineMarkerExt
-    addEntryFn    := fun s e => s.push e
-    addImportedFn := fun arr =>
-      arr.foldl (init := (#[] : Array InlineMarker)) Array.append
-    asyncMode     := .sync
-  }
+  registerArrayExt `Atlas.atlasInlineMarkerExt
 
 private def recordInlineMarker (kind : Name) (stx : Syntax) (text : String)
     : Lean.Elab.Term.TermElabM Unit := do

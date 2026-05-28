@@ -17,6 +17,7 @@ Depends on `Atlas/Basic.lean` (attribute) and `Atlas/Number.lean`
 import Lean
 import Atlas.Basic
 import Atlas.Number
+import Atlas.Panels
 
 open Lean Elab Command
 
@@ -135,7 +136,17 @@ macro_rules
       if isDefKind kind then
         expandAtlasDef kind numStr t bs doc? ty b
       else
-        expandAtlasTheorem kind numStr t bs doc? ty b
+        -- Theorem-flavored body: if tactic-mode, wrap in
+        -- `with_atlas_panels` so the InfoView gets the per-decl refs +
+        -- figures panels (elab lives in `Atlas/Refs.lean`). Term-mode
+        -- bodies pass through unwrapped.
+        let bodyWrapped ← match b with
+          | `(by $tacs:tacticSeq) =>
+              let kindLit := Syntax.mkStrLit kind
+              let numLit  := Syntax.mkStrLit numStr
+              `(by with_atlas_panels $kindLit $numLit $tacs)
+          | _ => pure b
+        expandAtlasTheorem kind numStr t bs doc? ty bodyWrapped
   -- Numbered axiom (no body).
   | `($[$doc?:docComment]? atlas $k:ident $n:atlasNumLit $t:str $bs:bracketedBinder* : $ty) => do
       let kind := k.raw.getId.toString

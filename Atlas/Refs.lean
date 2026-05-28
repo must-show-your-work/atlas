@@ -280,31 +280,7 @@ def elabRefsCmd : CommandElab := fun stx => do
 
 end Atlas.Refs
 
--- Intercept tactic-bodied `atlas <kind> <num> "<title>" ... := by <tacs>`
--- commands and auto-wrap the body in `with_atlas_refs`. Every atlas proof
--- (theorem-flavored kind) gets the refs panel by default. Term-mode
--- bodies and body-less `atlas axiom` fall through to Atlas's own
--- `macro_rules` via `Macro.throwUnsupported`.
---
--- This `macro_rules` is at top-level (not under `Atlas.Refs`) so it
--- composes with Atlas's other `macro_rules` for the same `atlas`
--- syntax. The expansion references `with_atlas_refs` via hygiene; the
--- consuming module needs `open Atlas` (which is the same prereq as
--- using `atlas commentary` or any other atlas syntax).
-open Lean Atlas Atlas.Refs in
-macro_rules
-  | `($[$doc?:docComment]? atlas $k:ident $n:atlasNumLit $t:str $bs:bracketedBinder* : $ty := by $tacs:tacticSeq) => do
-    let kindStr := k.raw.getId.toString
-    if kindStr == "axiom" || kindStr == "definition" then
-      Macro.throwUnsupported
-    let numStr ← Atlas.atlasNumToString n
-    let kindLit := Syntax.mkStrLit kindStr
-    let numLit := Syntax.mkStrLit numStr
-    let ident := mkIdentFrom t.raw (Name.mkSimple t.getString)
-    let wrappedBody ← `(by with_atlas_panels $kindLit $numLit $tacs)
-    match doc? with
-    | some doc =>
-      `($doc:docComment
-        @[atlas $kindLit $numLit $t] theorem $ident $bs* : $ty := $wrappedBody)
-    | none =>
-      `(@[atlas $kindLit $numLit $t] theorem $ident $bs* : $ty := $wrappedBody)
+-- The panel auto-wrap previously lived here as a parallel `macro_rules`
+-- override. It now lives in `Atlas/Command.lean`'s primary macro_rules
+-- (theorem-arm), driven by the shared `with_atlas_panels` syntax in
+-- `Atlas/Panels.lean`. One place to evolve atlas-decl shape.

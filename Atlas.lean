@@ -55,6 +55,7 @@ for the smoke test that exercises the full elaboration pipeline.
 
 import Atlas.Basic
 import Atlas.Number
+import Atlas.Panels
 import Atlas.Command
 import Atlas.Ref
 import Atlas.Via

@@ -7,6 +7,7 @@ import Atlas.Command
 import Atlas.Ref
 import Atlas.Via
 import Atlas.Figure
+import Atlas.Panels
 
 /-!
 # `Atlas/Refs.lean` — atlas-refs InfoView panel + macro override
@@ -236,21 +237,13 @@ def atlasRefsHtml (name : Name) : MetaM Html := do
   let refs ← atlasRefs name
   buildHtml name refs none
 
-/-- `with_atlas_panels <kind> <num> <tacticSeq>` — wraps a proof in
-the per-decl InfoView panels: the atlas-references panel (syntactically
-scanned from the seq) and the figures panel (looked up by `(kind, num)`
-from `atlasFigureExt`). Both attach to `seq`'s source range so they
-follow the cursor through the proof body.
-
-Auto-injected by the `atlas`-macro override below. Combined into one
-tactic so both panels anchor to the user-positioned `$tacs`; chaining
-two wrappers would put the outer panel on a synthesized inner tacticSeq
-with no source position, hiding it from the InfoView. -/
-scoped syntax (name := withAtlasPanels)
-  "with_atlas_panels" str str tacticSeq : tactic
+-- `with_atlas_panels` syntax token lives in `Atlas/Panels.lean` so
+-- `Atlas/Command.lean` can emit it without pulling in this file's
+-- ProofWidgets dependency. Elaboration stays here — it's what binds the
+-- tactic to the InfoView panel render.
 
 open Elab Tactic in
-@[tactic withAtlasPanels]
+@[tactic Atlas.withAtlasPanels]
 def elabWithAtlasPanels : Tactic := fun stx => match stx with
   | `(tactic| with_atlas_panels $k:str $n:str $seq) => do
     let some declName ← Term.getDeclName?

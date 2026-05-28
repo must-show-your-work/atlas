@@ -86,13 +86,7 @@ structure CommentaryBlock where
 -- before its target's `atlas <kind> N` decl, we can't resolve eagerly).
 initialize atlasCommentaryExt :
     SimplePersistentEnvExtension CommentaryBlock (Array CommentaryBlock) ←
-  registerSimplePersistentEnvExtension {
-    name          := `Atlas.atlasCommentaryExt
-    addEntryFn    := fun s e => s.push e
-    addImportedFn := fun arr =>
-      arr.foldl (init := (#[] : Array CommentaryBlock)) Array.append
-    asyncMode     := .sync
-  }
+  registerArrayExt `Atlas.atlasCommentaryExt
 
 -- Field-grammar for the commentary block. A separate syntax category
 -- AND `scoped` so the field keywords don't pollute global identifiers.

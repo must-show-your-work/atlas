@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# atlas — CLI shim.
+#
+# Locates the Python implementation in the atlas package and exec's
+# it with the given args. Designed to be symlinked from a downstream
+# project's repo root:
+#
+#   ln -s .lake/packages/atlas/bin/atlas ./atlas
+#
+# Then `./atlas dump`, `./atlas import <file>`, `./atlas serve`, etc.
+# work from the downstream repo root (cwd = repo root, not Atlas).
+#
+# When run in-place (developing Atlas itself), it just exec's the
+# sibling Python script.
+
+set -euo pipefail
+
+# Follow symlinks to find the directory containing THIS script.
+src="${BASH_SOURCE[0]}"
+while [ -h "$src" ]; do
+  dir="$( cd -P "$( dirname "$src" )" >/dev/null 2>&1 && pwd )"
+  src="$( readlink "$src" )"
+  [[ $src != /* ]] && src="$dir/$src"
+done
+script_dir="$( cd -P "$( dirname "$src" )" >/dev/null 2>&1 && pwd )"
+atlas_root="$( cd "$script_dir/.." >/dev/null 2>&1 && pwd )"
+
+exec python3 "$atlas_root/scripts/atlas.py" "$@"

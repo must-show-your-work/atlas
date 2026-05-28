@@ -15,12 +15,20 @@ a tier with lower tiers, the lookup falls through and Lean's
 overload-choice mechanism picks by type unification. Cascade is
 *disabled* in `Atlas/Via.lean` (it interacts badly with vararg dispatch).
 
-The `elabAtlasRefAux` helper lives here and is public so `Via.lean`
-could share it if we ever want to unify the two paths (today they're
-parallel with duplicated case-analysis on the atlasNum form).
+The `elabAtlasRefAux` helper is internal to this file. It can't be
+trivially shared with `Via.lean`: Via's multi-match path does an
+`isDefEq` loop over candidates against the surrounding args + expected
+type, while Ref's emits a choice node and lets Lean's overload
+resolution pick. These are genuinely different dispatch strategies.
+
+The planned unification (see `docs/unified_ref_ux.md`) folds Via's
+isDefEq machinery INTO Ref — making `ref kind N args` position-aware
+(no-args → choice-node dispatch by expected type; with-args → isDefEq
+over the args). When that lands, Ref absorbs Via rather than the
+reverse. Until then, the two elabs stay parallel.
 
 Depends on `Atlas/Basic.lean` (lookups), `Atlas/Number.lean`
-(atlasNum + scientificAtomText).
+(atlasNum + atlasNumToString).
 -/
 
 import Lean

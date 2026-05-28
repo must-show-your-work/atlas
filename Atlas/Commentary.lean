@@ -135,8 +135,9 @@ end Atlas
 
 namespace Atlas
 
-/-- Convert an `atlasNumLit` syntax to its canonical string key. -/
-private def atlasNumToStringCmt (num : Syntax) : MetaM String :=
+/-- Convert an `atlasNumLit` syntax to its canonical string key, throwing
+in the surrounding CommandElab context on malformed input. -/
+private def atlasNumToStringCmt (num : Syntax) : CommandElabM String :=
   match atlasNumToString? num with
   | some s => pure s
   | none   => throwError "atlas commentary: malformed number reference"
@@ -173,7 +174,7 @@ def elabAtlasCommentary : CommandElab := fun stx => do
     match fld with
     | `(atlasCommentaryField| ref $k:ident $n:atlasNumLit) =>
       tgtKind? := some k.getId.toString
-      tgtNum?  := some (← liftTermElabM (atlasNumToStringCmt n))
+      tgtNum?  := some (← atlasNumToStringCmt n)
     | `(atlasCommentaryField| page $p:num) =>
       pg? := some (toString p.getNat)
     | `(atlasCommentaryField| pages $a:num .. $b:num) =>
@@ -185,7 +186,7 @@ def elabAtlasCommentary : CommandElab := fun stx => do
       for entry in entries.getElems do
         match entry with
         | `(aliasEntry| $k:ident $n:atlasNumLit) =>
-          let numStr ← liftTermElabM (atlasNumToStringCmt n)
+          let numStr ← atlasNumToStringCmt n
           aliasRfs := aliasRfs.push (k.getId.toString, numStr)
         | `(aliasEntry| $i:ident) =>
           aliasNs := aliasNs.push i.getId

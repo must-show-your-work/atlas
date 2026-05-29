@@ -128,30 +128,93 @@ syntax:max (name := atlasRef) "ref" rawIdent atlasNumLit : term
 -- With-args form: `ref <kind> <num> args+`. Requires at least one arg
 -- (the `+`) so it doesn't shadow the no-args `atlasRef` syntax.
 --
--- Why a separate syntax + macro_rules instead of folding args into
--- `atlasRef`'s term-elab: Lean's app elab handles autoParam binders
--- correctly only when the function head is a CUSTOM SYNTAX KIND in
--- function-application position. In that case `elabAppFn`
--- (`Lean/Elab/App.lean:1947-1965`) does two steps: (A) `elabTerm f none
--- catchPostpone` elaborates the head alone — which auto-fills
--- autoParams since the user-arg queue is empty at that point; (B)
--- `elabAppLVals` applies the user args to the partial application,
--- which now only has the non-autoParam binders remaining.
+-- Lean has two distinct mechanisms for `<func> <args>` elaboration that
+-- diverge on autoParam handling:
 --
--- If we instead built `(const) args*` ourselves in a term-elab and
--- handed it to `elabTerm`, Lean would route through `elabAppFnId` →
--- `elabAppFnResolutions` → `elabAppLVals` (line 1787) WITHOUT the
--- separate elab-head-alone step, and the user args would bind to the
--- autoParam slots (failing on type mismatch). The macro-rules expansion
--- to `(ref k n) $args*` keeps the function head as a custom-syntax
--- form, so the fallthrough path fires and autoParams get auto-filled
--- before user args bind.
+--   1. No-parens (`f arg`): user args bind the FIRST explicit slot in
+--      order, autoParam-typed binders included. Lets the caller override
+--      an autoParam's default by supplying a positional value whose type
+--      unifies with the autoParam slot's type.
+--
+--   2. Parens (`(f) arg`): Lean elaborates the function fully first,
+--      which auto-fills autoParams via their tactic defaults; then the
+--      user arg binds the first slot AFTER the autoParams.
+--
+-- Both patterns appear in giyf: some call sites supply a value meant for
+-- the autoParam slot (Ex3 — `via exercise X ABC.symm` substitutes ABC);
+-- others supply a value meant for a later non-autoParam slot, expecting
+-- the autoParams to fill themselves (B4iii — `ref axiom B.4.i ⟨...⟩`
+-- where the three `off`-hypothesis autoParams must auto-fill so the
+-- conjunction slot receives `⟨...⟩`).
+--
+-- The term-elab below probes both mechanisms in order, type-directed:
+--   (a) Try no-parens first. If the user arg's type fits the next slot
+--       (which may be an autoParam), Lean elaborates successfully.
+--   (b) On failure, restore state and try parens. autoParams auto-fill;
+--       user arg binds the next non-autoParam slot.
+-- No syntactic marker required at the call site; the types decide.
 syntax:max (name := atlasRefApp)
   "ref" rawIdent atlasNumLit (ppSpace colGt term:max)+ : term
 
-macro_rules
-  | `(ref $k:ident $n:atlasNumLit $arg $args*) =>
-      `((ref $k $n) $arg $args*)
+/-- Type-directed singleton dispatch: try no-parens (args may bind
+autoParam slots whose type unifies with the user arg), fall back to
+parens (autoParams auto-fill, args bind the first non-autoParam slot).
+
+`errToSorry` is disabled during the probes — otherwise Lean would log
+the failing arm's error and emit a `sorry`, which our `try` wouldn't
+see (and the failing arm would silently "succeed" downstream). With
+errToSorry off, the failing arm throws; the catch restores state and
+tries the other arm. The outer caller's errToSorry context is what
+governs the final attempt's error reporting. -/
+private def elabRefAppSingleton (cand : Name) (args : Array (TSyntax `term))
+    (expectedType? : Option Expr) : Lean.Elab.Term.TermElabM Lean.Expr := do
+  let head := mkIdent cand
+  let snap ← Lean.Elab.Term.saveState
+  try
+    Lean.Elab.Term.withoutErrToSorry do
+      let appStx ← `($head $args*)
+      Lean.Elab.Term.elabTerm appStx expectedType?
+  catch _ =>
+    snap.restore
+    let appStx ← `(($head) $args*)
+    Lean.Elab.Term.elabTerm appStx expectedType?
+
+@[term_elab atlasRefApp]
+def elabAtlasRefAppTerm : Lean.Elab.Term.TermElab := fun stx expectedType? =>
+  match stx with
+  | `(term| ref $k:ident $n:atlasNumLit $arg $args*) => do
+      let kind := k.getId.toString
+      let numStr ← match atlasNumToString? n with
+        | some s => pure s
+        | none   => throwError "atlas: malformed number reference"
+      let env ← getEnv
+      let ns := atlasLookupCascading env kind numStr
+      let allArgs := #[arg] ++ args
+      match ns with
+      | []  =>
+        throwError s!"atlas: no {kind} tagged `{numStr}` found"
+      | [n] =>
+        elabRefAppSingleton n allArgs expectedType?
+      | _   =>
+        -- Multi-match: try each candidate's type-directed dispatch in
+        -- turn, keep the first that elaborates without throwing. If
+        -- giyf needs more sophisticated multi-match resolution (e.g.,
+        -- preferring candidates whose inferred type best-matches a
+        -- concrete expected type), revisit.
+        let mut lastError : Option Lean.MessageData := none
+        for cand in ns do
+          let snap ← Lean.Elab.Term.saveState
+          try
+            return (← elabRefAppSingleton cand allArgs expectedType?)
+          catch ex =>
+            lastError := some ex.toMessageData
+            snap.restore
+        match lastError with
+        | some msg =>
+          throwError m!"atlas: no candidate for {kind} `{numStr}` fits ({ns.length} tried):\n{msg}"
+        | none =>
+          throwError s!"atlas: no candidate for {kind} `{numStr}` fits"
+  | _ => Lean.Elab.throwUnsupportedSyntax
 
 -- Uniform `atlas <kind> <num>` term-position form. Works for *every*
 -- atlas kind including `lemma`/`axiom`/`theorem` (which can't have bare

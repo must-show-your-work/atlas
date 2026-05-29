@@ -155,7 +155,9 @@ Misses transitive refs hidden inside `_proof_*` auxes. -/
 private partial def collectAtlasRefSyntax (stx : Syntax) (acc : Array (String × String)) :
     Array (String × String) :=
   let acc :=
-    if stx.getKind == ``Atlas.atlasRef || stx.getKind == ``Atlas.atlasVia then
+    if stx.getKind == ``Atlas.atlasRef
+        || stx.getKind == ``Atlas.atlasRefApp
+        || stx.getKind == ``Atlas.atlasVia then
       let kindStr := stx[1].getId.toString
       let numStx := stx[2]
       let numStr := numStx.reprint.getD ""

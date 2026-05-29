@@ -125,6 +125,34 @@ syntax:max (name := atlasRefDefinition)  "definition"  atlasNumLit : term
 -- `rawIdent` so any keyword-shaped name resolves.
 syntax:max (name := atlasRef) "ref" rawIdent atlasNumLit : term
 
+-- With-args form: `ref <kind> <num> args+`. Requires at least one arg
+-- (the `+`) so it doesn't shadow the no-args `atlasRef` syntax.
+--
+-- Why a separate syntax + macro_rules instead of folding args into
+-- `atlasRef`'s term-elab: Lean's app elab handles autoParam binders
+-- correctly only when the function head is a CUSTOM SYNTAX KIND in
+-- function-application position. In that case `elabAppFn`
+-- (`Lean/Elab/App.lean:1947-1965`) does two steps: (A) `elabTerm f none
+-- catchPostpone` elaborates the head alone — which auto-fills
+-- autoParams since the user-arg queue is empty at that point; (B)
+-- `elabAppLVals` applies the user args to the partial application,
+-- which now only has the non-autoParam binders remaining.
+--
+-- If we instead built `(const) args*` ourselves in a term-elab and
+-- handed it to `elabTerm`, Lean would route through `elabAppFnId` →
+-- `elabAppFnResolutions` → `elabAppLVals` (line 1787) WITHOUT the
+-- separate elab-head-alone step, and the user args would bind to the
+-- autoParam slots (failing on type mismatch). The macro-rules expansion
+-- to `(ref k n) $args*` keeps the function head as a custom-syntax
+-- form, so the fallthrough path fires and autoParams get auto-filled
+-- before user args bind.
+syntax:max (name := atlasRefApp)
+  "ref" rawIdent atlasNumLit (ppSpace colGt term:max)+ : term
+
+macro_rules
+  | `(ref $k:ident $n:atlasNumLit $arg $args*) =>
+      `((ref $k $n) $arg $args*)
+
 -- Uniform `atlas <kind> <num>` term-position form. Works for *every*
 -- atlas kind including `lemma`/`axiom`/`theorem` (which can't have bare
 -- term keywords because that would reserve those tokens and break bare

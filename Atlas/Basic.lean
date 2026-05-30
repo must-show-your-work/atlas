@@ -140,28 +140,32 @@ def kindTiers : List (List String) :=
   , [ "remark", "note", "observation", "example", "discussion" ]
   ]
 
-/-- Cascading lookup. Given a starting `kind` and `number`, find the
-    tier containing `kind`, then collect every decl tagged `number`
-    whose kind is in that tier or any tier below. Returns the names
-    flat-in-tier-order. Kinds outside the tier table are exact-lookup
-    only. -/
+/-- Cascading lookup with "exact wins" semantics. Given a starting
+    `kind` and `number`:
+      1. Try the exact `(kind, number)` lookup. If non-empty, return it.
+      2. Otherwise, find the tier containing `kind` and cascade across
+         the rest of that tier and all lower tiers, returning every
+         match in tier-order.
+    Step 1 makes the user's kind win when present — `lemma N` resolves
+    to lemma N if one exists, ignoring corollary N or theorem N at the
+    same number. Step 2 keeps the loose-match behavior for when the
+    user's requested kind has no decl at this number (`theorem 3.3`
+    falling through to a corollary 3.3 if no theorem exists).
+    Kinds outside the tier table are exact-lookup only — no cascade. -/
 def atlasLookupCascading (env : Environment) (kind number : String) : List Name :=
-  -- Find the starting tier (the one that contains `kind`). If `kind`
-  -- isn't in any tier, the lookup stays exact — no cascade.
-  let rec dropUntil : List (List String) → List (List String)
-    | []         => []
-    | t :: rest  => if t.contains kind then t :: rest else dropUntil rest
-  let tiers := dropUntil kindTiers
-  if tiers.isEmpty then
-    atlasLookupByNumber env kind number
-  else
-    -- Search current + all lower tiers, in order. Within the starting
-    -- tier, the user's requested kind goes first so it gets first
-    -- crack at unification.
-    let preferredFirst : List String := tiers.head!.filter (· != kind) |>.cons kind
-    let allKinds : List String := preferredFirst ++ (tiers.tail!.foldl (· ++ ·) [])
-    allKinds.foldl (init := []) fun acc k =>
-      acc ++ atlasLookupByNumber env k number
+  let exact := atlasLookupByNumber env kind number
+  if !exact.isEmpty then exact else
+    let rec dropUntil : List (List String) → List (List String)
+      | []         => []
+      | t :: rest  => if t.contains kind then t :: rest else dropUntil rest
+    let tiers := dropUntil kindTiers
+    if tiers.isEmpty then [] else
+      -- The exact-kind was already tried; cascade over other kinds in
+      -- the same tier and all lower tiers.
+      let otherKinds : List String :=
+        tiers.head!.filter (· != kind) ++ (tiers.tail!.foldl (· ++ ·) [])
+      otherKinds.foldl (init := []) fun acc k =>
+        acc ++ atlasLookupByNumber env k number
 
 /-! ## Attribute -/
 

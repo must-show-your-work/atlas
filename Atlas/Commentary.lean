@@ -99,6 +99,10 @@ initialize atlasCommentaryExt :
 declare_syntax_cat atlasCommentaryField
 
 scoped syntax (name := acRef)     "ref"     rawIdent atlasNumLit  : atlasCommentaryField
+-- `via` as a surface alias of `ref` in commentary blocks, mirroring
+-- the term-position alias in `Atlas/Via.lean`. Lets the corpus stay
+-- consistent on one citation keyword.
+scoped syntax (name := acVia)     "via"     rawIdent atlasNumLit  : atlasCommentaryField
 scoped syntax (name := acPage)    "page"    num                : atlasCommentaryField
 scoped syntax (name := acPages)   "pages"   num ".." num       : atlasCommentaryField
 scoped syntax (name := acName)    "name"    str                : atlasCommentaryField
@@ -173,6 +177,9 @@ def elabAtlasCommentary : CommandElab := fun stx => do
     -- above. Match on kind, then destructure the args.
     match fld with
     | `(atlasCommentaryField| ref $k:ident $n:atlasNumLit) =>
+      tgtKind? := some k.getId.toString
+      tgtNum?  := some (← atlasNumToStringCmt n)
+    | `(atlasCommentaryField| via $k:ident $n:atlasNumLit) =>
       tgtKind? := some k.getId.toString
       tgtNum?  := some (← atlasNumToStringCmt n)
     | `(atlasCommentaryField| page $p:num) =>

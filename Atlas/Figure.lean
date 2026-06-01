@@ -349,17 +349,24 @@ def elabFigureFields (fields : Array Syntax) : CommandElabM Figure := do
       let s ← liftM (IO.FS.readFile path : IO String)
       pure (s, path)
     | none,        some t   => do
-      -- `unsafe` because `Meta.evalExpr` runs the expression via the
-      -- interpreter; the type system can't track its failure modes.
-      -- Same pattern Mathlib uses for compile-time `Meta.evalExpr`.
-      -- Eval to a `Construction` then call `.toSvg` to get the SVG body.
+      -- Polymorphic dispatch via `Figures.Renderable α String`. Atlas
+      -- doesn't know what `α` is — could be a `Scene Pos2`, an
+      -- EWM-specific IR, anything that has a Renderable instance
+      -- producing an SVG-body String. Find the instance, build the
+      -- render-call Expr, eval to get the SVG. `unsafe` because
+      -- `Meta.evalExpr` runs the expression via the interpreter.
       let s ← Command.liftTermElabM <| do
-        let e ← Lean.Elab.Term.elabTermAndSynthesize t
-                  (some (Lean.mkConst ``Figures.Construction))
-        let c : Figures.Construction ←
-          unsafe Lean.Meta.evalExpr Figures.Construction
-                   (Lean.mkConst ``Figures.Construction) e
-        pure c.toSvg
+        -- `elabTermAndSynthesize` elaborates + synthesizes + instantiates.
+        let e ← Lean.Elab.Term.elabTermAndSynthesize t none
+        let α ← Lean.Meta.inferType e
+        let stringTy := Lean.mkConst ``String
+        let renderableTy :=
+          Lean.mkApp2 (Lean.mkConst ``Figures.Renderable) α stringTy
+        let inst ← Lean.Meta.synthInstance renderableTy
+        -- `@Figures.Renderable.render α String inst e`
+        let renderApp :=
+          Lean.mkApp4 (Lean.mkConst ``Figures.Renderable.render) α stringTy inst e
+        unsafe Lean.Meta.evalExpr String (Lean.mkConst ``String) renderApp
       pure (s, "<direct_rep>")
   let svgHtml ← match SvgParser.parse svgStr with
     | .ok h => pure h

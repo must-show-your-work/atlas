@@ -22,6 +22,8 @@ import ProofWidgets.Data.Html
 import ProofWidgets.Component.HtmlDisplay
 import Atlas.Basic
 import Atlas.Number
+import Figures
+import Figures.SVG
 
 open Lean Elab Command ProofWidgets
 
@@ -295,27 +297,40 @@ def atlasFiguresFor (env : Environment) (kind number : String) : Array Figure :=
     | none,   some _ => false
     | none,   none   => false
 
-/-! ## Field syntax: `figure := by file … title … index … caption …` -/
+/-! ## Field syntax: `figure := by file … title … index … caption …`
+
+Or `direct_rep <term>` instead of `file` — the term is a Lean
+expression that evaluates to a `Figures.Construction` (the figure IR).
+Atlas internally renders the IR to SVG via `.toSvg`, parses, and
+attaches the resulting Html tree. Used when the figure is generated
+programmatically (a DSL elaboration, a hand-written IR, etc.) rather
+than read from disk. The two forms are mutually exclusive within a
+single `figure := by …` block. -/
 
 declare_syntax_cat atlasFigureField
 
-scoped syntax (name := afFile)    "file"    str : atlasFigureField
-scoped syntax (name := afTitle)   "title"   str : atlasFigureField
-scoped syntax (name := afIndex)   "index"   num : atlasFigureField
-scoped syntax (name := afCaption) "caption" str : atlasFigureField
+scoped syntax (name := afFile)      "file"       str  : atlasFigureField
+scoped syntax (name := afDirectRep) "direct_rep" term : atlasFigureField
+scoped syntax (name := afTitle)     "title"      str  : atlasFigureField
+scoped syntax (name := afIndex)     "index"      num  : atlasFigureField
+scoped syntax (name := afCaption)   "caption"    str  : atlasFigureField
 
-/-- Parse a list of `atlasFigureField` syntax args, read the referenced
-    file, parse its SVG into a `Html` tree, and produce a `Figure`.
-    The `file` field is required; others optional. -/
+/-- Parse a list of `atlasFigureField` syntax args, read either the
+    referenced file or the in-line `direct_rep` term to get the SVG
+    body, parse it into a `Html` tree, and produce a `Figure`.
+    Exactly one of `file` / `direct_rep` is required; others optional. -/
 def elabFigureFields (fields : Array Syntax) : CommandElabM Figure := do
-  let mut fpOpt    : Option String := none
-  let mut titleOpt : Option String := none
-  let mut idxOpt   : Option Nat    := none
-  let mut capOpt   : Option String := none
+  let mut fpOpt      : Option String := none
+  let mut drOpt      : Option Syntax := none  -- captured term, eval'd below
+  let mut titleOpt   : Option String := none
+  let mut idxOpt     : Option Nat    := none
+  let mut capOpt     : Option String := none
   for fld in fields do
     match fld with
     | `(atlasFigureField| file $s:str) =>
       fpOpt := some s.getString
+    | `(atlasFigureField| direct_rep $t:term) =>
+      drOpt := some t
     | `(atlasFigureField| title $s:str) =>
       titleOpt := some s.getString
     | `(atlasFigureField| index $n:num) =>
@@ -323,13 +338,33 @@ def elabFigureFields (fields : Array Syntax) : CommandElabM Figure := do
     | `(atlasFigureField| caption $s:str) =>
       capOpt := some s.getString
     | _ => throwErrorAt fld "atlas figure: unrecognized field"
-  let some path := fpOpt |
-    throwError "atlas figure: missing `file \"<path>\"` field — required"
-  let svgStr ← liftM (IO.FS.readFile path : IO String)
+  -- Resolve the SVG source. `file` reads from disk; `direct_rep`
+  -- evaluates the term to a `String` at elab time via the interpreter.
+  let (svgStr, fpStr) ← match fpOpt, drOpt with
+    | none,        none     =>
+      throwError "atlas figure: missing source — need either `file \"<path>\"` or `direct_rep <term>`"
+    | some _,      some _   =>
+      throwError "atlas figure: `file` and `direct_rep` are mutually exclusive within one block"
+    | some path,   none     => do
+      let s ← liftM (IO.FS.readFile path : IO String)
+      pure (s, path)
+    | none,        some t   => do
+      -- `unsafe` because `Meta.evalExpr` runs the expression via the
+      -- interpreter; the type system can't track its failure modes.
+      -- Same pattern Mathlib uses for compile-time `Meta.evalExpr`.
+      -- Eval to a `Construction` then call `.toSvg` to get the SVG body.
+      let s ← Command.liftTermElabM <| do
+        let e ← Lean.Elab.Term.elabTermAndSynthesize t
+                  (some (Lean.mkConst ``Figures.Construction))
+        let c : Figures.Construction ←
+          unsafe Lean.Meta.evalExpr Figures.Construction
+                   (Lean.mkConst ``Figures.Construction) e
+        pure c.toSvg
+      pure (s, "<direct_rep>")
   let svgHtml ← match SvgParser.parse svgStr with
     | .ok h => pure h
-    | .error msg => throwError s!"atlas figure: failed to parse SVG at '{path}': {msg}"
-  return { filePath := path, titleStr := titleOpt, idx := idxOpt,
+    | .error msg => throwError s!"atlas figure: failed to parse SVG ({fpStr}): {msg}"
+  return { filePath := fpStr, titleStr := titleOpt, idx := idxOpt,
            captionStr := capOpt, svgHtml := svgHtml }
 
 /-! ## Html assembly for the figures section

@@ -25,7 +25,7 @@ import Atlas.Basic
 import Atlas.Number
 import Atlas.Figure
 
-open Lean Elab Command
+open Lean Elab Command Server ProofWidgets
 
 namespace Atlas
 
@@ -234,6 +234,18 @@ def elabAtlasCommentary : CommandElab := fun stx => do
     -- (via `acFigure`) so a `{ …, figure := fig }` LHS won't parse.
     let fb : FigureBlock := ⟨kind, num, fig⟩
     modifyEnv (atlasFigureExt.addEntry · fb)
+  -- Attach a figure-panel widget bound to the whole commentary block
+  -- so the InfoView shows the rendered figures whenever the cursor is
+  -- inside `atlas commentary := by …`. Without this the figures only
+  -- appear in the InfoView on the theorem's proof side (via
+  -- `with_atlas_panels`); commentary blocks otherwise produce no
+  -- InfoView content.
+  if !pendingFigs.isEmpty then
+    if let some figuresHtml := figuresHtmlSection pendingFigs then
+      liftCoreM <| Widget.savePanelWidgetInfo
+        (hash HtmlDisplayPanel.javascript)
+        (return json% { html: $(← rpcEncode figuresHtml) })
+        stx
   -- NOTE: in v1 we record alias names in the commentary block but
   -- *don't* generate Lean-level decls for them. Several attempts to
   -- emit `abbrev`/`def`/`notation` either fought the target's

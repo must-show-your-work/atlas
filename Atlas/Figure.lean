@@ -327,6 +327,14 @@ declare_syntax_cat atlasFigureField
 
 scoped syntax (name := afFile)      "file"       str  : atlasFigureField
 scoped syntax (name := afIR) "intermediate_representation" term : atlasFigureField
+-- `inherit <kind> <num>` re-uses the base IR figure from another
+-- atlas decl by (kind, number). Typical case: a corollary inheriting
+-- its parent proposition's figure. The IR is looked up from
+-- `baseIRExprExt` and evaluated the same way as if the caller had
+-- written `intermediate_representation <that-IR>`. Lookup happens at
+-- elab time, so the inherited target must already have been
+-- elaborated (lexical order in the file or upstream imports).
+scoped syntax (name := afInherit) "inherit" rawIdent atlasNumLit : atlasFigureField
 scoped syntax (name := afTitle)     "title"      str  : atlasFigureField
 scoped syntax (name := afIndex)     "index"      num  : atlasFigureField
 scoped syntax (name := afCaption)   "caption"    str  : atlasFigureField
@@ -368,6 +376,7 @@ def elabFigureFields (fields : Array Syntax)
     (defaultCaption? : Option String := none) : CommandElabM Figure := do
   let mut fpOpt      : Option String := none
   let mut drOpt      : Option Syntax := none  -- captured term, eval'd below
+  let mut inhOpt     : Option (String × String) := none -- (kind, num) for inherit
   let mut titleOpt   : Option String := none
   let mut idxOpt     : Option Nat    := none
   let mut capOpt     : Option String := none
@@ -382,6 +391,10 @@ def elabFigureFields (fields : Array Syntax)
       fpOpt := some s.getString
     | `(atlasFigureField| intermediate_representation $t:term) =>
       drOpt := some t
+    | `(atlasFigureField| inherit $k:ident $n:atlasNumLit) =>
+      let some numStr := atlasNumToString? n
+        | throwErrorAt n "atlas figure: malformed atlasNumLit"
+      inhOpt := some (k.getId.toString, numStr)
     | `(atlasFigureField| title $s:str) =>
       titleOpt := some s.getString
     | `(atlasFigureField| index $n:num) =>
@@ -390,16 +403,44 @@ def elabFigureFields (fields : Array Syntax)
       capOpt := some s.getString
     | _ => throwErrorAt fld "atlas figure: unrecognized field"
   -- Resolve the SVG source. `file` reads from disk; `intermediate_representation`
-  -- evaluates the term to a `String` at elab time via the interpreter.
-  let (svgStr, fpStr) ← match fpOpt, drOpt with
-    | none,        none     =>
-      throwError "atlas figure: missing source — need either `file \"<path>\"` or `intermediate_representation <term>`"
-    | some _,      some _   =>
-      throwError "atlas figure: `file` and `intermediate_representation` are mutually exclusive within one block"
-    | some path,   none     => do
+  -- evaluates the term to a `String` at elab time via the interpreter;
+  -- `inherit` looks up another decl's stored IR Expr and runs it
+  -- through the same Renderable path.
+  let sourceCount := fpOpt.isSome.toNat + drOpt.isSome.toNat + inhOpt.isSome.toNat
+  if sourceCount = 0 then
+    throwError "atlas figure: missing source — need one of `file`, `intermediate_representation`, or `inherit`"
+  if sourceCount > 1 then
+    throwError "atlas figure: `file` / `intermediate_representation` / `inherit` are mutually exclusive within one block"
+  let (svgStr, fpStr) ← match fpOpt, drOpt, inhOpt with
+    | some path, _, _ => do
       let s ← liftM (IO.FS.readFile path : IO String)
       pure (s, path)
-    | none,        some t   => do
+    | _, _, some (k, n) => do
+      -- Look up the parent target's IR Expr in `baseIRExprExt`,
+      -- evaluate it through the same Renderable path. The parent
+      -- must already be elaborated (lexical order or upstream
+      -- imports); otherwise we throw with a clear error.
+      let env ← getEnv
+      let some parentExpr := baseIRExprFor env k n
+        | throwError s!"atlas figure: `inherit {k} {n}` — no IR figure registered for ({k}, {n}) yet. Make sure the parent's commentary block (with its `intermediate_representation` / `construction` figure) is elaborated before this one."
+      let (s, exprForPush?) ← Command.liftTermElabM <| do
+        let α ← Lean.Meta.inferType parentExpr
+        let stringTy := Lean.mkConst ``String
+        let renderableTy :=
+          Lean.mkApp2 (Lean.mkConst ``Figures.Renderable) α stringTy
+        let inst ← Lean.Meta.synthInstance renderableTy
+        let renderApp :=
+          Lean.mkApp4 (Lean.mkConst ``Figures.Renderable.render) α stringTy inst parentExpr
+        let svg ← unsafe Lean.Meta.evalExpr String (Lean.mkConst ``String) renderApp
+        return (svg, some parentExpr)
+      -- Push under the CURRENT target so downstream tools (progressive
+      -- widget) can re-eval. Same Expr, just keyed to this decl too.
+      match target?, exprForPush? with
+      | some (k', n'), some e =>
+        modifyEnv (baseIRExprExt.addEntry · ((k', n'), e))
+      | _, _ => pure ()
+      pure (s, s!"<inherit {k} {n}>")
+    | _, some t, _ => do
       -- Polymorphic dispatch via `Figures.Renderable α String`. Atlas
       -- doesn't know what `α` is — could be a `Scene Pos2`, an
       -- EWM-specific IR, anything that has a Renderable instance
@@ -425,6 +466,11 @@ def elabFigureFields (fields : Array Syntax)
         modifyEnv (baseIRExprExt.addEntry · ((k, n), e))
       | _, _ => pure ()
       pure (s, "<intermediate_representation>")
+    | _, _, _ =>
+      -- Unreachable: `sourceCount` check above guarantees exactly one
+      -- of fpOpt / drOpt / inhOpt is `some`. Lean's exhaustiveness
+      -- check can't see through that.
+      throwError "atlas figure: internal — no source classified"
   let svgHtml ← match SvgParser.parse svgStr with
     | .ok h => pure h
     | .error msg => throwError s!"atlas figure: failed to parse SVG ({fpStr}): {msg}"

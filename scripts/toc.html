@@ -22,7 +22,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,0..100,0..1;1,9..144,300..900,0..100,0..1&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./vendor/katex/katex.min.css?v=local-10">
 <script src="./vendor/katex/katex.min.js?v=local-10"></script>
-<script src="./card.js?v=15"></script>
+<script src="./card.js?v=16"></script>
 
 <style>
 :root {
@@ -38,12 +38,6 @@
   --accent-soft:  #c87a6a;
   --teal:         #2c4f50;
   --teal-soft:    #5b8688;
-  /* SVG figure colors — keyed to the page so figures invert with mode.
-     `--fig-ink` is what the SVG strokes/glyphs paint with; `--fig-halo`
-     is the contrasting outline behind text for legibility. */
-  --fig-ink:      #073642;
-  --fig-ink-soft: #586e75;
-  --fig-halo:     #f4ecd8;
 }
 body.dark-mode {
   /* Warm dark — keeps the editorial tone instead of going neutral grey.
@@ -59,9 +53,6 @@ body.dark-mode {
   --accent-soft:  #c87a6a;
   --teal:         #7ba0a2;
   --teal-soft:    #5b8688;
-  --fig-ink:      #eee8d5;
-  --fig-ink-soft: #93a1a1;
-  --fig-halo:     #1f1a14;
 }
 * { box-sizing: border-box; }
 html, body {
@@ -251,17 +242,18 @@ html, body {
   min-height: 60px; color: var(--ink-ghost); font-style: italic; font-size: 13px;
   padding: 10px 0;
 }
-.card-figure svg { max-width: 100%; height: auto; color: var(--fig-ink); }
+.card-figure svg { max-width: 100%; height: auto; color: var(--ink); }
 /* Figures drawn by `renderBare` (the atlas-bare SVG path) reach for
    `currentColor` on all strokes / fills, so the figure inverts with
-   the host page mode. The CSS classes match Figures/SVG.lean's
-   class names. */
+   the host page mode. Text colors track `--ink` / `--ink-muted`
+   directly so figures match the surrounding prose. The CSS classes
+   match Figures/SVG.lean's class names. */
 .card-figure svg .txt,
 .card-figure svg .lbl {
   font-family: "DejaVu Serif", "Fraunces", serif;
   font-size: 22px;
-  fill: var(--fig-ink);
-  stroke: var(--fig-halo);
+  fill: var(--ink);
+  stroke: var(--paper);
   stroke-width: 4px;
   paint-order: stroke;
 }
@@ -269,8 +261,8 @@ html, body {
 .card-figure svg .callout {
   font-family: "DejaVu Sans", "Inter", sans-serif;
   font-size: 18px;
-  fill: var(--fig-ink-soft);
-  stroke: var(--fig-halo);
+  fill: var(--ink-muted);
+  stroke: var(--paper);
   stroke-width: 4px;
   paint-order: stroke;
 }
@@ -397,7 +389,12 @@ body.mode-production .bn-line:hover { background: transparent; }
 */
 .proof-grid {
   display: grid;
-  grid-template-columns: minmax(0, 4fr) minmax(0, 5fr) minmax(0, 3fr);
+  /* Middle column sizes to its content (no horizontal scroll on
+     source lines); side columns flex around it with a hard minimum
+     so they don't collapse to 0. Sidebar text wraps; source stays on
+     its single line until it's really too long, at which point the
+     `pre-wrap` fallback on `.bn-code` kicks in. */
+  grid-template-columns: minmax(8em, 1fr) auto minmax(8em, 1fr);
   border: 1px solid var(--paper-deep);
   border-radius: 3px; background: var(--paper-soft);
   overflow: hidden;
@@ -422,22 +419,28 @@ body.mode-production .bn-line:hover { background: transparent; }
   border-right: 1px solid var(--paper-deep);
   font-style: italic; color: var(--ink-soft);
   font-size: 13.5px; line-height: 1.5;
+  overflow-wrap: anywhere;   /* wrap long quotes rather than overflow */
 }
 .proof-col-source {
   background: var(--paper);
   padding: 0 12px;
   font-family: "JetBrains Mono", monospace;
+  white-space: nowrap;       /* keep source on its line by default */
 }
 .proof-col-source .bn-code {
   margin: 0; padding: 1px 0;
   background: transparent; color: var(--ink);
   font: 400 12px/1.55 "JetBrains Mono", monospace;
-  white-space: pre; overflow-x: auto;
+  /* `pre-wrap` so an extremely long line still wraps as a fallback
+     instead of overflowing the card horizontally — the auto-sized
+     middle column normally absorbs the width. */
+  white-space: pre-wrap;
 }
 .proof-col-commentary {
   background: var(--paper-soft);
   border-left: 1px solid var(--paper-deep);
   font-size: 12.5px; color: var(--ink-soft);
+  overflow-wrap: anywhere;   /* wrap long editor notes */
 }
 .proof-col-commentary .bn-marker { margin: 1px 0; }
 .bn-empty {
@@ -493,9 +496,9 @@ body.mode-production .bn-line:hover { background: transparent; }
   white-space: pre; overflow-x: auto;
 }
 .bn-marker { display: flex; align-items: baseline; gap: 0.45em; }
-.bn-marker-quoting .bn-text { font-style: italic; color: #073642; }
-.bn-marker-comment { color: #586e75; }
-.bn-marker-comment .bn-text { color: #586e75; font-size: 0.86em; }
+.bn-marker-quoting .bn-text { font-style: italic; color: var(--ink-soft); }
+.bn-marker-comment { color: var(--ink-muted); }
+.bn-marker-comment .bn-text { color: var(--ink-muted); font-size: 0.86em; }
 .bn-marker-pagebreak {
   display: flex; align-items: center; gap: 0.6em;
   color: var(--ink-ghost); font-style: italic; font-size: 11px;
@@ -521,6 +524,20 @@ body.mode-production .bn-line:hover { background: transparent; }
 .bn-chip-todo       { background: rgba(147, 161, 161, 0.18); color: #586e75; }
 .bn-chip-fixme      { background: rgba(220,  50,  47, 0.22); color: #93222b; }
 .bn-chip-detail     { background: rgba(108, 113, 196, 0.12); color: #6c71c4; font-style: italic; }
+
+/* Dark-mode chip foregrounds. The rgba *backgrounds* carry semantic
+   color tinting (yellow=idea, red=fixme, etc.) and still read on a
+   dark page; the saturated dark foregrounds however go invisible
+   against the warm-dark paper, so swap to lighter variants. */
+body.dark-mode .bn-chip-idea       { color: #e2b75c; }
+body.dark-mode .bn-chip-intuition  { color: #9da4d8; }
+body.dark-mode .bn-chip-motivation { color: #b8d066; }
+body.dark-mode .bn-chip-caution    { color: #e89865; }
+body.dark-mode .bn-chip-aside      { color: #b3c2c2; }
+body.dark-mode .bn-chip-cf         { color: #6fb5e0; }
+body.dark-mode .bn-chip-todo       { color: #b3c2c2; }
+body.dark-mode .bn-chip-fixme      { color: #f08a85; }
+body.dark-mode .bn-chip-detail     { color: #a3a8d8; }
 
 /* Lean source token colors (used by highlightLean) */
 .lean-kw    { color: var(--accent); font-weight: 500; }
@@ -557,8 +574,8 @@ body.mode-production .bn-line:hover { background: transparent; }
 <div class="app">
   <aside class="toc-pane">
     <header class="toc-head">
-      <h1 class="toc-title">Theorem Atlas</h1>
-      <div class="toc-subtitle">Greenberg · Geometry</div>
+      <h1 class="toc-title" id="projTitle">Theorem Atlas</h1>
+      <div class="toc-subtitle" id="projSubtitle">loading…</div>
       <div class="toc-filters">
         <input class="toc-search" id="search" type="search" placeholder="Filter by kind / number / title…">
         <select class="toc-group-by" id="groupBy">
@@ -589,6 +606,7 @@ body.mode-production .bn-line:hover { background: transparent; }
 const GRAPH_URL = '../blueprint/graph.json';
 const MARKERS_URL = '../blueprint/markers.json';
 const COMMENTARY_URL = '../blueprint/commentary.json';
+const PROJECT_URL = '../blueprint/project.json';
 
 const A = window.AtlasCard;
 let DECLS = [];           // node.data, atlas-tagged only
@@ -686,11 +704,26 @@ function declSlug(d) {
 }
 
 async function loadAll() {
-  const [graphR, markersR, commentaryR] = await Promise.all([
+  const [graphR, markersR, commentaryR, projectR] = await Promise.all([
     fetch(GRAPH_URL, { cache: 'no-store' }),
     fetch(MARKERS_URL, { cache: 'no-store' }),
     fetch(COMMENTARY_URL, { cache: 'no-store' }),
+    fetch(PROJECT_URL, { cache: 'no-store' }).catch(() => null),
   ]);
+  // Project title / subtitle — driven by a per-project sidecar so
+  // every consumer (giyf, EWM, etc.) gets its own branding without
+  // viewer-side hardcoding. Optional: falls back to generic labels.
+  if (projectR && projectR.ok) {
+    try {
+      const proj = await projectR.json();
+      if (proj.title)    document.getElementById('projTitle').textContent = proj.title;
+      if (proj.subtitle) document.getElementById('projSubtitle').textContent = proj.subtitle;
+      else               document.getElementById('projSubtitle').textContent = '';
+      if (proj.title)    document.title = proj.title + ' · Atlas';
+    } catch { /* tolerate */ }
+  } else {
+    document.getElementById('projSubtitle').textContent = '';
+  }
   if (!graphR.ok) throw new Error(`HTTP ${graphR.status} loading ${GRAPH_URL}`);
   const g = await graphR.json();
   DECLS = g.nodes.map(n => n.data).filter(d => d.atlas_kind);

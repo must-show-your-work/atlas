@@ -490,22 +490,27 @@ function restructureBinders(tex) {
   return out;
 }
 
-// Find indices of `\to` tokens that sit at the top level of `tex`
-// (not inside any `(...)` or `{...}`). Returns sorted positions of
-// the leading backslash. Used by `breakAtTopLevelArrows` to insert
-// line breaks between hypotheses so the statement breathes.
-function topLevelArrowPositions(tex) {
+// Find indices of `\to` / `\wedge` tokens that sit at the top level
+// of `tex` (not inside any `(...)` or `{...}`). Used by
+// `breakAtTopLevelArrows` to insert line breaks at every top-level
+// connective so the statement reads as a vertical list.
+function topLevelBreakPositions(tex) {
   const out = [];
   let depth = 0;
   for (let i = 0; i < tex.length - 2; i++) {
     const c = tex[i];
     if (c === '\\') {
-      // Skip macro names so we don't count their letters as depth-changers.
-      // `\to`, `\foo`, `\bar` — advance past `\` + ident chars.
-      if (depth === 0 && tex.substr(i, 3) === '\\to' && /\W|$/.test(tex[i+3] || '')) {
-        out.push(i);
+      if (depth === 0) {
+        // Recognise the connectives we break at. Each must be
+        // followed by a non-letter char so we don't match `\toot`
+        // or similar prefixes.
+        if (tex.substr(i, 3) === '\\to' && /\W|$/.test(tex[i+3] || '')) {
+          out.push({ pos: i, len: 3, kind: 'to' });
+        } else if (tex.substr(i, 6) === '\\wedge' && /\W|$/.test(tex[i+6] || '')) {
+          out.push({ pos: i, len: 6, kind: 'wedge' });
+        }
       }
-      // Skip the macro name to avoid mis-counting.
+      // Skip past the macro name.
       let j = i + 1;
       while (j < tex.length && /[A-Za-z]/.test(tex[j])) j++;
       i = j - 1;
@@ -517,31 +522,55 @@ function topLevelArrowPositions(tex) {
   return out;
 }
 
-// Insert breaks at top-level `\to`s so the statement reads
-// vertically: each hypothesis on its own line, with extra breathing
-// room before the final arrow (the conclusion). Every row starts
-// with `&` so the `aligned` environment left-aligns the whole stack
-// at a single column.
+// Strip parens around predicate atoms — `(L \text{ intersects } \overline{AC})`
+// adds visual noise inside `… ∨ … ∧ …` chains and the parens carry no
+// precedence information when the contents have no top-level binary
+// operator. Iterate to fixed point so nested `((…))` peels both layers.
+function stripPredicateParens(tex) {
+  let prev;
+  do {
+    prev = tex;
+    tex = tex.replace(/\(([^()]+?)\)/g, (m, inner) =>
+      /\\to\b|\\wedge\b|\\vee\b|\\implies\b|\\Leftrightarrow\b/.test(inner) ? m : inner);
+  } while (tex !== prev);
+  return tex;
+}
+
+// Insert breaks at top-level `\to` / `\wedge` so the statement reads
+// vertically: each hypothesis on its own line, conjuncts of the
+// conclusion stacked underneath the implication arrow. Every row
+// starts with `&` so the `aligned` environment left-aligns the
+// whole stack at a single column.
+//
+// The LAST `\to` (separating the final hypothesis from the
+// conclusion) is upgraded to `\implies` and gets `[10pt]` of extra
+// vertical space above it, so hypothesis-block and conclusion-block
+// read as visually distinct chunks.
 function breakAtTopLevelArrows(tex) {
-  const positions = topLevelArrowPositions(tex);
-  if (positions.length === 0) return tex;
+  const breaks = topLevelBreakPositions(tex);
+  if (breaks.length === 0) return tex;
+  // Find the LAST top-level `\to` — that's the conclusion arrow.
+  let lastToIdx = -1;
+  for (let i = 0; i < breaks.length; i++) {
+    if (breaks[i].kind === 'to') lastToIdx = i;
+  }
   const pieces = [];
   let cursor = 0;
-  for (let i = 0; i < positions.length; i++) {
-    const pos = positions[i];
-    const isLast = i === positions.length - 1;
-    pieces.push(tex.substring(cursor, pos).trimEnd());
-    // `\\\\` = LaTeX line break. `[10pt]` widens the gap before the
-    // conclusion arrow so hypotheses and conclusion read as distinct
-    // blocks. `&\to` / `&\implies` make every row align at the
-    // arrow column.
-    pieces.push(isLast ? ' \\\\[10pt]\n  &\\implies\\ ' : ' \\\\\n  &\\to\\ ');
-    cursor = pos + 3;            // skip "\to"
+  for (let i = 0; i < breaks.length; i++) {
+    const b = breaks[i];
+    pieces.push(tex.substring(cursor, b.pos).trimEnd());
+    const isConclusionArrow = i === lastToIdx;
+    if (isConclusionArrow) {
+      pieces.push(' \\\\[10pt]\n  &\\implies\\ ');
+    } else if (b.kind === 'wedge') {
+      pieces.push(' \\\\\n  &\\wedge\\ ');
+    } else {
+      pieces.push(' \\\\\n  &\\to\\ ');
+    }
+    cursor = b.pos + b.len;
     while (cursor < tex.length && /\s/.test(tex[cursor])) cursor++;
   }
   pieces.push(tex.substring(cursor));
-  // Leading `&` on the first row anchors it to the same column as the
-  // continuation rows, so the binder header and the arrows left-align.
   return `\\begin{aligned}\n  &${pieces.join('')}\n\\end{aligned}`;
 }
 

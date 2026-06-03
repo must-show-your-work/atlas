@@ -60,6 +60,12 @@ initialize atlasExt : SimplePersistentEnvExtension AtlasRow AtlasState ←
     addImportedFn := fun arr =>
       arr.foldl (init := ({} : AtlasState)) fun s sub =>
         sub.foldl insertEntry s
+    -- `.sync` mirrors `registerArrayExt`'s reasoning: the `atlas`
+    -- command writes to this ext during elaboration of decls that
+    -- Lean 4.30+ elaborates in async tasks. Without this override
+    -- the default `.mainOnly` mode panics ("environment extension is
+    -- marked as `mainOnly` but used in async context").
+    asyncMode     := .sync
   }
 
 /-- Walk `getModuleEntries` for every imported module and fold the

@@ -22,7 +22,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,0..100,0..1;1,9..144,300..900,0..100,0..1&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./vendor/katex/katex.min.css?v=local-10">
 <script src="./vendor/katex/katex.min.js?v=local-10"></script>
-<script src="./card.js?v=16"></script>
+<script src="./card.js?v=17"></script>
 
 <style>
 :root {
@@ -419,7 +419,10 @@ body.mode-production .bn-line:hover { background: transparent; }
   border-right: 1px solid var(--paper-deep);
   font-style: italic; color: var(--ink-soft);
   font-size: 13.5px; line-height: 1.5;
-  overflow-wrap: anywhere;   /* wrap long quotes rather than overflow */
+  /* `break-word` only breaks INSIDE a word as a last resort, so the
+     step / page / chip tokens stay atomic. `anywhere` was breaking
+     `(4)` across lines. */
+  overflow-wrap: break-word;
 }
 .proof-col-source {
   background: var(--paper);
@@ -440,7 +443,7 @@ body.mode-production .bn-line:hover { background: transparent; }
   background: var(--paper-soft);
   border-left: 1px solid var(--paper-deep);
   font-size: 12.5px; color: var(--ink-soft);
-  overflow-wrap: anywhere;   /* wrap long editor notes */
+  overflow-wrap: break-word;
 }
 .proof-col-commentary .bn-marker { margin: 1px 0; }
 .bn-empty {
@@ -511,6 +514,9 @@ body.mode-production .bn-line:hover { background: transparent; }
   padding: 1px 6px; border-radius: 2px;
   letter-spacing: 0.04em;
   background: rgba(200, 122, 106, 0.18); color: var(--accent);
+  /* Stay an atomic unit even when the surrounding column has to
+     wrap text. Prevents `(4)` from splitting across lines. */
+  display: inline-block; white-space: nowrap;
 }
 .bn-page { background: rgba(44, 79, 80, 0.15); color: var(--teal); }
 .bn-step-cont { background: rgba(184, 166, 133, 0.25); color: var(--ink-muted); }

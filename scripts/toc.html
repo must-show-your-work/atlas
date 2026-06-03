@@ -22,7 +22,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,0..100,0..1;1,9..144,300..900,0..100,0..1&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./vendor/katex/katex.min.css?v=local-10">
 <script src="./vendor/katex/katex.min.js?v=local-10"></script>
-<script src="./card.js?v=10"></script>
+<script src="./card.js?v=11"></script>
 
 <style>
 :root {
@@ -889,17 +889,34 @@ function flaggableSection(name, label, body) {
     </section>`;
 }
 
-// Compute the set of absolute file lines that are part of a marker
-// syntax (`quoting (N) "…"` / `comment "…"` / `idea "…"` / …). These
-// lines are rendered as their parsed marker block in the LHS or RHS
-// proof column, so we blank the middle code cell to avoid duplication.
-// The opening line + every continuation line of the string literal
-// are all marked; quoted strings can span multiple source lines.
+// Compute the set of absolute file lines we drop from the proof
+// source column. Two categories:
+//   - the decl prelude (everything from `atlas <kind> <num> "…"` /
+//     `theorem foo …` through the line containing `:= by`) —
+//     duplicates the statement pane.
+//   - marker syntax (`quoting (N) "…"` / `comment "…"` / `idea "…"` /
+//     …) whose parsed text already shows in the LHS/RHS proof
+//     columns. Multi-line string literals tracked via the same
+//     state machine.
 const MARKER_KW = /^\s*(quoting|comment|idea|intuition|motivation|caution|aside|cf|todo|fixme|detail|page_break)\b/;
 function computeMarkerLines(source, baseLine) {
   const elided = new Set();
   const lines = source.split('\n');
-  let i = 0;
+
+  // Decl prelude: scan forward until we hit a line whose content
+  // (post-`--` comment) ends with `:= by`. Elide every line up to
+  // and including that one. If no `:= by` is found (axiom / `def`
+  // / one-line `:=` body), no prelude is elided.
+  let preludeEnd = -1;
+  for (let i = 0; i < lines.length; i++) {
+    // Strip the part after `--` so a trailing line comment doesn't
+    // smuggle a fake `:= by` past us.
+    const code = lines[i].replace(/--.*/, '').trimEnd();
+    if (code.endsWith(':= by')) { preludeEnd = i; break; }
+  }
+  for (let i = 0; i <= preludeEnd; i++) elided.add(baseLine + i);
+
+  let i = preludeEnd + 1;
   while (i < lines.length) {
     if (!MARKER_KW.test(lines[i])) { i++; continue; }
     elided.add(baseLine + i);

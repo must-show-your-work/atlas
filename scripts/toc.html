@@ -22,7 +22,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,0..100,0..1;1,9..144,300..900,0..100,0..1&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./vendor/katex/katex.min.css?v=local-10">
 <script src="./vendor/katex/katex.min.js?v=local-10"></script>
-<script src="./card.js?v=19"></script>
+<script src="./card.js?v=20"></script>
 
 <style>
 :root {
@@ -860,9 +860,22 @@ function renderRefChip(targetId) {
   </span>`;
 }
 
+// Lexisort references by (kind, number) so the chips read in a
+// stable, scan-friendly order regardless of edge ingestion order
+// from `graph.json`.
+function sortRefs(ids) {
+  return ids.slice().sort((a, b) => {
+    const da = BY_ID.get(a), db = BY_ID.get(b);
+    const ka = (da && da.atlas_kind) || ''; const kb = (db && db.atlas_kind) || '';
+    if (ka !== kb) return ka.localeCompare(kb);
+    const na = (da && da.atlas_number) || ''; const nb = (db && db.atlas_number) || '';
+    return cmpNumber(na, nb);
+  });
+}
+
 function renderRefsSection(d) {
-  const outs = OUT_EDGES.get(d.id) || [];
-  const ins  = IN_EDGES.get(d.id)  || [];
+  const outs = sortRefs(OUT_EDGES.get(d.id) || []);
+  const ins  = sortRefs(IN_EDGES.get(d.id)  || []);
   if (outs.length === 0 && ins.length === 0) return '';
   return `
     <section class="card-section" data-section="references">

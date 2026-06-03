@@ -1697,19 +1697,14 @@ body::after {
     </div>
 
     <aside class="inspector" id="info">
-      <div class="empty-state" id="empty-state">
-        <div class="glyph">∎</div>
-        <p>Touch a node to read its preface, premises, and conclusion.</p>
-        <div class="katex-diagnostic">
-          <div class="diagnostic-label">Viewer build: <code>v=local-10</code> (if this doesn't say v=local-10, your browser is serving cached HTML; open in a private window)</div>
-          <div class="diagnostic-label">KaTeX self-test</div>
-          <div id="katex-test"></div>
-          <div class="diagnostic-label">Raw KaTeX HTML (first 240 chars)</div>
-          <pre id="katex-test-raw"></pre>
-          <div class="diagnostic-label">.katex bounding rect</div>
-          <pre id="katex-test-rect"></pre>
-        </div>
-      </div>
+      <!-- Tap-a-node loads the TOC viewer's full card (statement,
+           figure, 3-col proof, refs, notes, flag/click handling) via
+           an iframe rather than the legacy ad-hoc renderer. Same
+           data, same dark mode, same line-flag store as the TOC. -->
+      <iframe id="toc-card-frame"
+              src="./toc.html"
+              title="theorem card"
+              style="border:0; width:100%; height:100%;"></iframe>
     </aside>
   </main>
 
@@ -2991,13 +2986,49 @@ async function main() {
   }
 
   // ---------- Inspector ----------
+  // The inspector now hosts an iframe that loads `toc.html` — every
+  // node tap navigates the iframe to the corresponding decl's slug
+  // (`#<kind>-<num>`). All card features (statement / figure / proof /
+  // refs / notes / line flags / dark mode) come along for free.
+  // The old ad-hoc `showNode` HTML renderer is still here as a
+  // fallback for non-atlas-tagged nodes (which have no slug); when
+  // an atlas decl is selected we just hand off to the iframe.
   const info = document.getElementById('info');
-  // Stash the empty-state markup so we can restore it on canvas-deselect.
-  const emptyStateHTML = info.innerHTML;
-  function restoreEmptyState() { info.innerHTML = emptyStateHTML; }
+  const tocFrame = document.getElementById('toc-card-frame');
+
+  // Build the same `<kind>-<num>` slug as toc.html's `declSlug`. Must
+  // stay in sync with `toc.html`'s rule.
+  function tocSlugFor(d) {
+    if (!d.atlas_kind || !d.atlas_number) return null;
+    const k = d.atlas_kind.toLowerCase().replace(/[^a-z0-9.-]/g, '_');
+    const n = d.atlas_number.replace(/[^a-zA-Z0-9.-]/g, '_');
+    return `${k}-${n}`;
+  }
+
+  function navigateToc(slug) {
+    if (!tocFrame) return;
+    const url = './toc.html' + (slug ? '#' + encodeURIComponent(slug) : '');
+    // If the iframe is already pointing at toc.html, just patch the
+    // hash on its window — no full reload.
+    try {
+      if (tocFrame.contentWindow && tocFrame.contentDocument
+          && /toc\.html/.test(tocFrame.contentWindow.location.pathname)) {
+        tocFrame.contentWindow.location.hash = slug ? '#' + encodeURIComponent(slug) : '';
+        return;
+      }
+    } catch { /* cross-origin guard, fall through */ }
+    tocFrame.src = url;
+  }
+  function restoreEmptyState() { navigateToc(null); }
   function escapeHtmlBlock(s) { return escapeHtml(s); }
 
   function showNode(d) {
+    // Atlas-tagged decls route to the TOC card via the iframe.
+    const slug = tocSlugFor(d);
+    if (slug) { navigateToc(slug); return; }
+    // Non-atlas nodes (e.g. private helpers without `@[atlas …]`)
+    // fall through to the legacy renderer below since the TOC viewer
+    // doesn't index them.
     const sorryTag = d.has_sorry
       ? `<span class="sorry-tag">contains sorry</span>` : '';
     const propTag = d.is_proposition

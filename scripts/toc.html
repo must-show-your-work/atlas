@@ -22,10 +22,11 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,0..100,0..1;1,9..144,300..900,0..100,0..1&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./vendor/katex/katex.min.css?v=local-10">
 <script src="./vendor/katex/katex.min.js?v=local-10"></script>
-<script src="./card.js?v=13"></script>
+<script src="./card.js?v=14"></script>
 
 <style>
 :root {
+  /* Light mode (default) — aged-paper editorial palette. */
   --paper:        #f4ecd8;
   --paper-soft:   #ede2c5;
   --paper-deep:   #e0d2ad;
@@ -37,6 +38,30 @@
   --accent-soft:  #c87a6a;
   --teal:         #2c4f50;
   --teal-soft:    #5b8688;
+  /* SVG figure colors — keyed to the page so figures invert with mode.
+     `--fig-ink` is what the SVG strokes/glyphs paint with; `--fig-halo`
+     is the contrasting outline behind text for legibility. */
+  --fig-ink:      #073642;
+  --fig-ink-soft: #586e75;
+  --fig-halo:     #f4ecd8;
+}
+body.dark-mode {
+  /* Warm dark — keeps the editorial tone instead of going neutral grey.
+     Cream-ink on deep-brown paper, accent shifted lighter for contrast. */
+  --paper:        #1f1a14;
+  --paper-soft:   #2a221a;
+  --paper-deep:   #3a2f24;
+  --ink:          #e8d8b8;
+  --ink-soft:     #d0b896;
+  --ink-muted:    #a08560;
+  --ink-ghost:    #6b5840;
+  --accent:       #d27a6a;
+  --accent-soft:  #c87a6a;
+  --teal:         #7ba0a2;
+  --teal-soft:    #5b8688;
+  --fig-ink:      #eee8d5;
+  --fig-ink-soft: #93a1a1;
+  --fig-halo:     #1f1a14;
 }
 * { box-sizing: border-box; }
 html, body {
@@ -79,6 +104,14 @@ html, body {
 }
 .export-wireframe:hover { color: var(--accent); border-color: var(--ink-ghost); }
 .export-wireframe:disabled { color: var(--ink-ghost); cursor: default; }
+.mode-toggle {
+  margin-top: 6px;
+  padding: 5px 10px; background: var(--paper); border: 1px solid var(--paper-deep);
+  border-radius: 3px; color: var(--ink-muted); cursor: pointer;
+  font: 11px/1.4 "JetBrains Mono", monospace; letter-spacing: 0.04em;
+  width: 100%; text-align: left;
+}
+.mode-toggle:hover { color: var(--accent); border-color: var(--ink-ghost); }
 .toc-list { overflow-y: auto; padding: 8px 0 60px; }
 .toc-group { padding: 14px 22px 6px; }
 .toc-group-label {
@@ -218,7 +251,29 @@ html, body {
   min-height: 60px; color: var(--ink-ghost); font-style: italic; font-size: 13px;
   padding: 10px 0;
 }
-.card-figure svg { max-width: 100%; height: auto; }
+.card-figure svg { max-width: 100%; height: auto; color: var(--fig-ink); }
+/* Figures drawn by `renderBare` (the atlas-bare SVG path) reach for
+   `currentColor` on all strokes / fills, so the figure inverts with
+   the host page mode. The CSS classes match Figures/SVG.lean's
+   class names. */
+.card-figure svg .txt,
+.card-figure svg .lbl {
+  font-family: "DejaVu Serif", "Fraunces", serif;
+  font-size: 22px;
+  fill: var(--fig-ink);
+  stroke: var(--fig-halo);
+  stroke-width: 4px;
+  paint-order: stroke;
+}
+.card-figure svg .lbl { font-style: italic; }
+.card-figure svg .callout {
+  font-family: "DejaVu Sans", "Inter", sans-serif;
+  font-size: 18px;
+  fill: var(--fig-ink-soft);
+  stroke: var(--fig-halo);
+  stroke-width: 4px;
+  paint-order: stroke;
+}
 
 .card-meta {
   grid-area: footer;
@@ -514,6 +569,10 @@ body.mode-production .bn-line:hover { background: transparent; }
       <button class="export-wireframe" id="exportWireframe"
               title="Export the current card layout as an SVG wireframe">
         ⇣ wireframe
+      </button>
+      <button class="mode-toggle" id="modeToggle"
+              title="Toggle light / dark mode (Shift+D)">
+        ◐ dark
       </button>
     </header>
     <div class="toc-list" id="tocList"></div>
@@ -1311,6 +1370,34 @@ function exportWireframe() {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 document.getElementById('exportWireframe').addEventListener('click', exportWireframe);
+document.getElementById('modeToggle').addEventListener('click', toggleMode);
+
+// ---------- Dark / light mode ----------
+// Pure-client preference, persisted to localStorage. Works in both
+// debug (Flask) and production (static) modes — no API dependency.
+// Toggle via the header button or Shift+D.
+const MODE_KEY = 'atlas.mode';
+function applyMode(mode) {
+  document.body.classList.toggle('dark-mode', mode === 'dark');
+  const btn = document.getElementById('modeToggle');
+  if (btn) btn.textContent = mode === 'dark' ? '◑ light' : '◐ dark';
+}
+function loadMode() {
+  try { return localStorage.getItem(MODE_KEY) || 'light'; }
+  catch { return 'light'; }
+}
+function toggleMode() {
+  const next = loadMode() === 'dark' ? 'light' : 'dark';
+  try { localStorage.setItem(MODE_KEY, next); } catch {}
+  applyMode(next);
+}
+window.addEventListener('keydown', ev => {
+  if (ev.shiftKey && (ev.key === 'D' || ev.key === 'd') &&
+      !/^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName)) {
+    ev.preventDefault();
+    toggleMode();
+  }
+});
 
 // Detect whether the Flask annotation API is reachable. If not, we're
 // being served as a static bundle (production / GH Pages / embedded
@@ -1330,6 +1417,7 @@ async function detectMode() {
 
 (async function main() {
   try {
+    applyMode(loadMode());     // apply light/dark before first paint
     const mode = await detectMode();
     await loadAll();
     if (mode === 'debug') {

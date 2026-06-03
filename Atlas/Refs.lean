@@ -240,6 +240,15 @@ def atlasRefsHtml (name : Name) : MetaM Html := do
   let refs ← atlasRefs name
   buildHtml name refs none
 
+/-- Hook for libraries that want to attach per-tactic-line widgets
+to a proof body (e.g. giyf's progressive figure widgets that update as
+the cursor moves through proof steps). Called after `evalTacticSeq`
+inside `with_atlas_panels` with the target (kind, num), the enclosing
+decl name, and the proof's tacticSeq syntax. Default no-op. -/
+initialize figureProgressionHookRef :
+    IO.Ref (String → String → Name → Lean.Syntax → Elab.Tactic.TacticM Unit) ←
+  IO.mkRef (fun _ _ _ _ => pure ())
+
 -- `with_atlas_panels` syntax token lives in `Atlas/Panels.lean` so
 -- `Atlas/Command.lean` can emit it without pulling in this file's
 -- ProofWidgets dependency. Elaboration stays here — it's what binds the
@@ -251,18 +260,14 @@ def elabWithAtlasPanels : Tactic := fun stx => match stx with
   | `(tactic| with_atlas_panels $k:str $n:str $seq) => do
     let some declName ← Term.getDeclName?
       | throwError "with_atlas_panels: no enclosing declaration"
-    -- Build the figures section (if any) and pass it through so the
-    -- refs Html-builder folds both into one panel — single
-    -- `HtmlDisplayPanel` save, single InfoView card.
-    let env ← getEnv
-    let figs := atlasFiguresFor env k.getString n.getString
-    let figuresSection? := figuresHtmlSection figs
-    let combinedHtml ← atlasRefsHtmlFromSyntax declName seq figuresSection?
+    let combinedHtml ← atlasRefsHtmlFromSyntax declName seq none
     Widget.savePanelWidgetInfo
       (hash HtmlDisplayPanel.javascript)
-      (return json% { html: $(← rpcEncode combinedHtml) })
+      (return Lean.Json.mkObj [("html", Atlas.htmlToJson combinedHtml)])
       seq
     evalTacticSeq seq
+    let hook ← figureProgressionHookRef.get
+    hook k.getString n.getString declName seq
   | _ => throwUnsupportedSyntax
 
 /-- `#refs <name>` — display atlas references of `<name>` in the InfoView. -/
@@ -277,7 +282,7 @@ def elabRefsCmd : CommandElab := fun stx => do
     let html ← liftTermElabM <| atlasRefsHtml n
     liftCoreM <| Widget.savePanelWidgetInfo
       (hash HtmlDisplayPanel.javascript)
-      (return json% { html: $(← rpcEncode html) })
+      (return Lean.Json.mkObj [("html", Atlas.htmlToJson html)])
       stx
   | _ => throwError "expected `#refs <name>`"
 

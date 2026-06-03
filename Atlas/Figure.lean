@@ -243,6 +243,22 @@ def parse (input : String) : Except String Html :=
 
 end SvgParser
 
+/-- Convert a (component-free) `Html` tree to plain JSON, bypassing
+`rpcEncode`. Lets us emit panel-widget props as self-contained data
+that doesn't depend on a live RPC session. Survives session refresh
+on tooling like lean-lsp-mcp that doesn't keep the session warm across
+queries. `.component` constructors aren't supported (those genuinely
+need RPC for their props); they emit JSON null. -/
+partial def htmlToJson : Html → Lean.Json
+  | .element tag attrs children =>
+    Lean.Json.mkObj [("element", Lean.Json.arr #[
+      Lean.Json.str tag,
+      Lean.Json.arr (attrs.map fun (k, v) => Lean.Json.arr #[Lean.Json.str k, v]),
+      Lean.Json.arr (children.map htmlToJson)
+    ])]
+  | .text s => Lean.Json.mkObj [("text", Lean.Json.str s)]
+  | .component _ _ _ _ => Lean.Json.null
+
 /-- One figure attached to an atlas decl. Field names deliberately
     avoid the `title` / `index` / `caption` tokens reserved by the
     scoped `atlasFigureField` syntax below, since those would shadow
@@ -299,7 +315,7 @@ def atlasFiguresFor (env : Environment) (kind number : String) : Array Figure :=
 
 /-! ## Field syntax: `figure := by file … title … index … caption …`
 
-Or `direct_rep <term>` instead of `file` — the term is a Lean
+Or `intermediate_representation <term>` instead of `file` — the term is a Lean
 expression that evaluates to a `Figures.Construction` (the figure IR).
 Atlas internally renders the IR to SVG via `.toSvg`, parses, and
 attaches the resulting Html tree. Used when the figure is generated
@@ -310,26 +326,61 @@ single `figure := by …` block. -/
 declare_syntax_cat atlasFigureField
 
 scoped syntax (name := afFile)      "file"       str  : atlasFigureField
-scoped syntax (name := afDirectRep) "direct_rep" term : atlasFigureField
+scoped syntax (name := afIR) "intermediate_representation" term : atlasFigureField
 scoped syntax (name := afTitle)     "title"      str  : atlasFigureField
 scoped syntax (name := afIndex)     "index"      num  : atlasFigureField
 scoped syntax (name := afCaption)   "caption"    str  : atlasFigureField
 
+/-- Per-target storage of the IR term (as a Lean expression) for the
+in-line `intermediate_representation` figure. Pushed by `elabFigureFields`
+when we have the commentary's target (kind, num). Downstream tooling
+(e.g. giyf's progressive figure widget) reads from here to re-evaluate
+the IR as its own value type. -/
+initialize baseIRExprExt :
+    SimplePersistentEnvExtension
+      ((String × String) × Lean.Expr)
+      (Array ((String × String) × Lean.Expr)) ←
+  registerArrayExt `Atlas.baseIRExprExt
+
+/-- Look up the IR Expr for `(kind, num)`, latest-wins. -/
+def baseIRExprFor (env : Environment) (kind num : String) : Option Lean.Expr :=
+  (baseIRExprExt.getState env).foldr
+    (init := none)
+    fun ((k, n), e) acc =>
+      if acc.isSome then acc
+      else if k == kind && n == num then some e else none
+
 /-- Parse a list of `atlasFigureField` syntax args, read either the
-    referenced file or the in-line `direct_rep` term to get the SVG
+    referenced file or the in-line `intermediate_representation` term to get the SVG
     body, parse it into a `Html` tree, and produce a `Figure`.
-    Exactly one of `file` / `direct_rep` is required; others optional. -/
-def elabFigureFields (fields : Array Syntax) : CommandElabM Figure := do
+    Exactly one of `file` / `intermediate_representation` is required; others optional.
+    The optional `target?` argument lets atlas push the IR term Expr
+    into `baseIRExprExt` keyed by (kind, num) for downstream use.
+
+    Defaults applied when fields are omitted:
+    - `title` ← `"<kind> <num>"` if `target?` is `some (kind, num)` (e.g.
+      `"lemma 2.0.5"`), otherwise the in-view fallback `"Figure N"`.
+    - `caption` ← `defaultCaption?` (typically the commentary's
+      `name "..."` long form).
+    The user's explicit `title` / `caption` always win when provided. -/
+def elabFigureFields (fields : Array Syntax)
+    (target? : Option (String × String) := none)
+    (defaultCaption? : Option String := none) : CommandElabM Figure := do
   let mut fpOpt      : Option String := none
   let mut drOpt      : Option Syntax := none  -- captured term, eval'd below
   let mut titleOpt   : Option String := none
   let mut idxOpt     : Option Nat    := none
   let mut capOpt     : Option String := none
-  for fld in fields do
+  for rawFld in fields do
+    -- Expand macros on the field syntax so downstream libs can extend
+    -- `atlasFigureField` with sugar (e.g. giyf's `construction { … }`
+    -- macro-rules to `intermediate_representation (…)`).
+    let expanded? ← liftMacroM (Lean.Macro.expandMacro? rawFld)
+    let fld : Lean.Syntax := expanded?.getD rawFld
     match fld with
     | `(atlasFigureField| file $s:str) =>
       fpOpt := some s.getString
-    | `(atlasFigureField| direct_rep $t:term) =>
+    | `(atlasFigureField| intermediate_representation $t:term) =>
       drOpt := some t
     | `(atlasFigureField| title $s:str) =>
       titleOpt := some s.getString
@@ -338,13 +389,13 @@ def elabFigureFields (fields : Array Syntax) : CommandElabM Figure := do
     | `(atlasFigureField| caption $s:str) =>
       capOpt := some s.getString
     | _ => throwErrorAt fld "atlas figure: unrecognized field"
-  -- Resolve the SVG source. `file` reads from disk; `direct_rep`
+  -- Resolve the SVG source. `file` reads from disk; `intermediate_representation`
   -- evaluates the term to a `String` at elab time via the interpreter.
   let (svgStr, fpStr) ← match fpOpt, drOpt with
     | none,        none     =>
-      throwError "atlas figure: missing source — need either `file \"<path>\"` or `direct_rep <term>`"
+      throwError "atlas figure: missing source — need either `file \"<path>\"` or `intermediate_representation <term>`"
     | some _,      some _   =>
-      throwError "atlas figure: `file` and `direct_rep` are mutually exclusive within one block"
+      throwError "atlas figure: `file` and `intermediate_representation` are mutually exclusive within one block"
     | some path,   none     => do
       let s ← liftM (IO.FS.readFile path : IO String)
       pure (s, path)
@@ -355,24 +406,39 @@ def elabFigureFields (fields : Array Syntax) : CommandElabM Figure := do
       -- producing an SVG-body String. Find the instance, build the
       -- render-call Expr, eval to get the SVG. `unsafe` because
       -- `Meta.evalExpr` runs the expression via the interpreter.
-      let s ← Command.liftTermElabM <| do
-        -- `elabTermAndSynthesize` elaborates + synthesizes + instantiates.
+      let (s, exprForPush?) ← Command.liftTermElabM <| do
         let e ← Lean.Elab.Term.elabTermAndSynthesize t none
         let α ← Lean.Meta.inferType e
         let stringTy := Lean.mkConst ``String
         let renderableTy :=
           Lean.mkApp2 (Lean.mkConst ``Figures.Renderable) α stringTy
         let inst ← Lean.Meta.synthInstance renderableTy
-        -- `@Figures.Renderable.render α String inst e`
         let renderApp :=
           Lean.mkApp4 (Lean.mkConst ``Figures.Renderable.render) α stringTy inst e
-        unsafe Lean.Meta.evalExpr String (Lean.mkConst ``String) renderApp
-      pure (s, "<direct_rep>")
+        let svg ← unsafe Lean.Meta.evalExpr String (Lean.mkConst ``String) renderApp
+        return (svg, some e)
+      -- Stash the elaborated IR Expr keyed by target so downstream
+      -- can re-eval (e.g. progressive figure widget reading its
+      -- Construction shape back out).
+      match target?, exprForPush? with
+      | some (k, n), some e =>
+        modifyEnv (baseIRExprExt.addEntry · ((k, n), e))
+      | _, _ => pure ()
+      pure (s, "<intermediate_representation>")
   let svgHtml ← match SvgParser.parse svgStr with
     | .ok h => pure h
     | .error msg => throwError s!"atlas figure: failed to parse SVG ({fpStr}): {msg}"
-  return { filePath := fpStr, titleStr := titleOpt, idx := idxOpt,
-           captionStr := capOpt, svgHtml := svgHtml }
+  -- Fill defaults if the user didn't supply them. Explicit values
+  -- always win — these only kick in when the user wrote a bare
+  -- `figure := by construction { ... }` without title/caption.
+  let titleFinal := match titleOpt with
+    | some t => some t
+    | none => target?.map (fun (k, n) => s!"{k} {n}")
+  let capFinal := match capOpt with
+    | some c => some c
+    | none => defaultCaption?
+  return { filePath := fpStr, titleStr := titleFinal, idx := idxOpt,
+           captionStr := capFinal, svgHtml := svgHtml }
 
 /-! ## Html assembly for the figures section
 

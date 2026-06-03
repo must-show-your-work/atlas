@@ -206,7 +206,14 @@ def elabAtlasCommentary : CommandElab := fun stx => do
       for t in ts.getElems do
         tagStrs := tagStrs.push t.getString
     | `(atlasCommentaryField| figure := by $fs:atlasFigureField*) =>
-      let fig ← elabFigureFields fs.raw
+      let target? : Option (String × String) :=
+        match tgtKind?, tgtNum? with
+        | some k, some n => some (k, n)
+        | _, _ => none
+      -- Pass the commentary's `name "..."` as the default caption so
+      -- figures without an explicit `caption` field still render the
+      -- long-form theorem statement under the SVG.
+      let fig ← elabFigureFields fs.raw target? nm?
       pendingFigs := pendingFigs.push fig
     | _ =>
       throwErrorAt fld "atlas commentary: unrecognized field"
@@ -244,7 +251,7 @@ def elabAtlasCommentary : CommandElab := fun stx => do
     if let some figuresHtml := figuresHtmlSection pendingFigs then
       liftCoreM <| Widget.savePanelWidgetInfo
         (hash HtmlDisplayPanel.javascript)
-        (return json% { html: $(← rpcEncode figuresHtml) })
+        (return Lean.Json.mkObj [("html", Atlas.htmlToJson figuresHtml)])
         stx
   -- NOTE: in v1 we record alias names in the commentary block but
   -- *don't* generate Lean-level decls for them. Several attempts to

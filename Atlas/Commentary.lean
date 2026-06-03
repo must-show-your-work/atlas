@@ -79,6 +79,18 @@ structure CommentaryBlock where
   bookPreface?: Option String     -- book statement / intro, free-form prose
   authorNotes?: Option String     -- editorial decl-level notes
   tagList     : Array String      -- cross-cutting category tags
+  -- `suppressed := true` (set by the `suppress` keyword) marks the
+  -- decl for default-hide in graph / TOC viewers. Used for
+  -- arrangement-theory boilerplate and other Lean machinery the book
+  -- reader doesn't need to encounter. The decl itself stays in the env
+  -- and in the dump JSON; downstream views just filter it out unless
+  -- the user opts in (future "show suppressed" toggle).
+  --
+  -- Field name is `suppressed` (past tense), not `suppress`, because
+  -- the latter is now a scoped keyword token in
+  -- `atlasCommentaryField`; using it as a struct field name confuses
+  -- Lean's parser inside struct literals.
+  suppressed  : Bool := false
   deriving Inhabited
 
 -- State stores all commentary blocks in source order. Lookup by
@@ -121,6 +133,12 @@ scoped syntax (name := acAliases) "aliases" "[" aliasEntry,* "]" : atlasCommenta
 scoped syntax (name := acPreface) "preface" str                : atlasCommentaryField
 scoped syntax (name := acNotes)   "notes"   str                : atlasCommentaryField
 scoped syntax (name := acTags)    "tags"    "[" str,* "]"      : atlasCommentaryField
+-- `suppress` marks the commentary's target decl as one the graph /
+-- TOC viewers should omit by default. Used for arrangement-theory
+-- boilerplate and other Lean machinery that a reader of the book
+-- wouldn't expect to encounter as a top-level theorem. Bare keyword:
+-- no argument needed.
+scoped syntax (name := acSuppress) "suppress" : atlasCommentaryField
 -- Nested figure block: each `figure := by …` declares one figure with
 -- its own metadata. Multiple blocks per commentary are allowed and the
 -- viewer's flip-through widget cycles between them.
@@ -168,6 +186,10 @@ def elabAtlasCommentary : CommandElab := fun stx => do
   let mut pref?    : Option String      := none
   let mut nt?      : Option String      := none
   let mut tagStrs  : Array String       := #[]
+  -- Local name avoids `suppress` since that's now a scoped keyword
+  -- token (declared above) and Lean's parser would treat
+  -- `let mut suppress` as `let mut <KEYWORD>`.
+  let mut isSuppressed : Bool            := false
   -- Pending figures: each `figure := by …` field is parsed eagerly
   -- (file read happens now), but the env extension push waits for the
   -- target `(kind, num)` to be resolved from the `ref` field below.
@@ -205,6 +227,8 @@ def elabAtlasCommentary : CommandElab := fun stx => do
     | `(atlasCommentaryField| tags [ $ts,* ]) =>
       for t in ts.getElems do
         tagStrs := tagStrs.push t.getString
+    | `(atlasCommentaryField| suppress) =>
+      isSuppressed := true
     | `(atlasCommentaryField| figure := by $fs:atlasFigureField*) =>
       let target? : Option (String × String) :=
         match tgtKind?, tgtNum? with
@@ -234,7 +258,8 @@ def elabAtlasCommentary : CommandElab := fun stx => do
       aliasRefs    := aliasRfs
       bookPreface? := pref?
       authorNotes? := nt?
-      tagList      := tagStrs }
+      tagList      := tagStrs
+      suppressed   := isSuppressed }
   modifyEnv (atlasCommentaryExt.addEntry · block)
   for fig in pendingFigs do
     -- Anonymous constructor: `figure` is now a reserved scoped token

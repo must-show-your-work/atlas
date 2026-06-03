@@ -22,7 +22,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,0..100,0..1;1,9..144,300..900,0..100,0..1&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./vendor/katex/katex.min.css?v=local-10">
 <script src="./vendor/katex/katex.min.js?v=local-10"></script>
-<script src="./card.js?v=14"></script>
+<script src="./card.js?v=15"></script>
 
 <style>
 :root {
@@ -765,10 +765,19 @@ function cmpKind(a, b) {
   return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
 }
 
+// Suppressed decls (commentary block carries `suppress`) hide from the
+// TOC list and the graph index but stay reachable by direct URL hash
+// or via a ref-chip from a non-suppressed decl that cites them.
+function isSuppressed(d) {
+  const cb = (window.commentaryByDecl && window.commentaryByDecl[d.id]) || null;
+  return !!(cb && cb.suppress);
+}
+
 function groupAndRender() {
   const groupBy = document.getElementById('groupBy').value;
   const q = document.getElementById('search').value.trim().toLowerCase();
   const filtered = DECLS.filter(d => {
+    if (isSuppressed(d)) return false;
     if (!q) return true;
     const hay = [d.atlas_kind, d.atlas_number, d.atlas_title, d.label].filter(Boolean).join(' ').toLowerCase();
     return hay.includes(q);

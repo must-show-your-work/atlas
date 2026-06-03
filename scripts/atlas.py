@@ -90,12 +90,26 @@ def cmd_import(args: argparse.Namespace) -> int:
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
-    """Serve the static JS+kuzu-wasm viewer over HTTP.
+    """Serve the static viewer + annotation API over HTTP.
 
-    Default port 8765. Serves files from `<project>/` so the viewer at
-    `scripts/graph.html` can `fetch('../blueprint/...')` correctly.
+    Static files use layered resolution (project first, then atlas
+    package) so a downstream repo only needs `blueprint/graph.json`
+    to get the full viewer. The annotation API (`/api/flags`,
+    `/api/notes`) is backed by SQLite at
+    `<project>/blueprint/atlas.sqlite`, kept out of the
+    `just graph` regen path so reviewer notes survive a rebuild.
+
+    Listens on `0.0.0.0:<port>` by default so the server is reachable
+    from other hosts on the LAN once the local firewall is opened:
+
+        sudo nixos-firewall-tool open tcp 8765
+
+    Set `--host 127.0.0.1` to bind loopback-only.
     """
-    return stub("serve", args)
+    # Lazy import so non-serve subcommands don't pay Flask startup cost.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from serve_app import serve as _serve
+    return _serve(ATLAS_ROOT, PROJECT_ROOT, args.host, args.port)
 
 
 def cmd_query(args: argparse.Namespace) -> int:
@@ -188,10 +202,15 @@ def build_parser() -> argparse.ArgumentParser:
                        help="dump file or directory (default: <project>/blueprint/)")
     p_imp.set_defaults(func=cmd_import)
 
-    # serve
+    # serve. Port 8765 is the canonical "atlas serve" port — document it
+    # everywhere so `nixos-firewall-tool open tcp 8765` works out of the
+    # box. Host defaults to 0.0.0.0 so the firewall opening actually
+    # buys you something; pass `--host 127.0.0.1` for loopback-only.
     p_srv = sub.add_parser("serve", help="serve the static viewer")
     p_srv.add_argument("--port", type=int, default=8765,
-                       help="HTTP port (default 8765)")
+                       help="HTTP port (default 8765 — the canonical atlas port)")
+    p_srv.add_argument("--host", default="0.0.0.0",
+                       help="bind address (default 0.0.0.0 — all interfaces)")
     p_srv.add_argument("--watch", action="store_true",
                        help="auto re-dump + re-import on change (not yet implemented)")
     p_srv.set_defaults(func=cmd_serve)

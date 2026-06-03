@@ -23,6 +23,14 @@
           inherit pkgs system;
           name = "atlas lean shell";
 
+          # `atlas serve` is a Flask app (annotation store + static viewer);
+          # bring its Python interpreter + Flask into the devshell so the
+          # serve command works out of the box. sqlite3 ships with the
+          # stdlib so no extra dep there.
+          extraPackages = [
+            (pkgs.python3.withPackages (ps: [ ps.flask ]))
+          ];
+
           # Bump when ./lean-toolchain changes: refetch with
           #   nix store prefetch-file --hash-type sha256 <url>
           manifest = {

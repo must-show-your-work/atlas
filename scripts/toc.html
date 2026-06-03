@@ -22,7 +22,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,0..100,0..1;1,9..144,300..900,0..100,0..1&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./vendor/katex/katex.min.css?v=local-10">
 <script src="./vendor/katex/katex.min.js?v=local-10"></script>
-<script src="./card.js?v=22"></script>
+<script src="./card.js?v=23"></script>
 
 <style>
 :root {
@@ -413,7 +413,11 @@ body.mode-production .bn-line:hover { background: transparent; }
 .proof-col-commentary,
 .proof-col-source {
   min-width: 0;
-  padding: 2px 10px;
+  /* Zero vertical padding — adjacent rows would otherwise compound
+     into a visible gap, which was reading as "an empty line" between
+     proof steps. Horizontal padding stays for readable column
+     gutters. */
+  padding: 0 10px;
   align-self: start;
 }
 .proof-col-quoting,
@@ -1161,23 +1165,19 @@ function renderProofTriColumn(d) {
          + `</div>`;
   });
 
-  // For LHS/RHS markers: compute each marker's start row (index in
-  // `kept` whose `abs` matches the anchor line) and end row (start
-  // row of the next marker in the same column, or rows+1 for the
-  // tail). Result: each marker cell spans from its anchor down to
-  // the row just before the next marker, letting long quotes/comments
-  // flow freely into otherwise-empty cells below.
+  // Markers anchor to a single row (their slid-forward source line).
+  // No multi-row spans: when the marker text is taller than the
+  // source row's content, the row inflates locally instead of
+  // stretching neighboring rows. Rows without their own marker stay
+  // tight to source-line height.
   const rowOfAbs = new Map(kept.map(({ abs }, i) => [abs, i + 1]));
   function placeMarkers(byLine, colClass) {
-    // Markers in source order
     const anchors = Object.keys(byLine).map(Number).sort((a, b) => a - b);
-    return anchors.map((anchor, i) => {
+    return anchors.map(anchor => {
       const startRow = rowOfAbs.get(anchor);
       if (!startRow) return '';
-      const nextAnchor = anchors[i + 1];
-      const endRow = nextAnchor ? rowOfAbs.get(nextAnchor) : kept.length + 1;
       const inner = byLine[anchor].map(A.renderMarkerLeft).join('');
-      return `<div class="${colClass}" style="grid-row:${startRow}/${endRow}">${inner}</div>`;
+      return `<div class="${colClass}" style="grid-row:${startRow}">${inner}</div>`;
     }).join('');
   }
   const leftCells  = placeMarkers(leftByLine,  'proof-col-quoting');

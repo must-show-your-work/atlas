@@ -2,3 +2,5 @@
 scripts/vendor
 .lake
 
+__pycache__/
+*.pyc

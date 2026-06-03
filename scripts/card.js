@@ -314,6 +314,21 @@ function leanToLatex(raw) {
   ];
   for (const [re, repl] of geom) s = s.replace(re, repl);
 
+  // Greenberg prose treats `distinct {A,B,C}` / `collinear {A,B,C}`
+  // as `distinct A B C` / `collinear A B C` — the brace set notation
+  // is a Lean detail. Replace commas with thin spaces. `\neg(collinear …)`
+  // folds further to `noncollinear …` since that's how the prose reads.
+  const dropBraces = (args) =>
+    args.split(',').map(t => t.trim()).filter(Boolean).join('\\,');
+  // `¬` (unicode) still in string at this point — the LEAN_TO_TEX_OPS
+  // unicode-to-`\neg` map runs at the very end of leanToLatex.
+  s = s.replace(/¬\s*\(\s*\\text\{collinear\}\\,\s*\\\{([^{}]+)\\\}\s*\)/g,
+                (_, a) => `\\text{noncollinear}\\,${dropBraces(a)}`);
+  s = s.replace(/\\text\{distinct\}\\,\s*\\\{([^{}]+)\\\}/g,
+                (_, a) => `\\text{distinct}\\,${dropBraces(a)}`);
+  s = s.replace(/\\text\{collinear\}\\,\s*\\\{([^{}]+)\\\}/g,
+                (_, a) => `\\text{collinear}\\,${dropBraces(a)}`);
+
   // Strip redundant parens around geometry overlines. Looped because
   // the rewrite pass can produce nested wrappers like `((\overline{AB}))`
   // when a Segment.between appears inside an already-parenthesized arg.
@@ -347,9 +362,67 @@ function texToKatexHtml(tex, { displayMode = false } = {}) {
   }
 }
 
+// Find indices of `\to` tokens that sit at the top level of `tex`
+// (not inside any `(...)` or `{...}`). Returns sorted positions of
+// the leading backslash. Used by `breakAtTopLevelArrows` to insert
+// line breaks between hypotheses so the statement breathes.
+function topLevelArrowPositions(tex) {
+  const out = [];
+  let depth = 0;
+  for (let i = 0; i < tex.length - 2; i++) {
+    const c = tex[i];
+    if (c === '\\') {
+      // Skip macro names so we don't count their letters as depth-changers.
+      // `\to`, `\foo`, `\bar` — advance past `\` + ident chars.
+      if (depth === 0 && tex.substr(i, 3) === '\\to' && /\W|$/.test(tex[i+3] || '')) {
+        out.push(i);
+      }
+      // Skip the macro name to avoid mis-counting.
+      let j = i + 1;
+      while (j < tex.length && /[A-Za-z]/.test(tex[j])) j++;
+      i = j - 1;
+      continue;
+    }
+    if (c === '(' || c === '{') depth++;
+    else if (c === ')' || c === '}') depth--;
+  }
+  return out;
+}
+
+// Insert breaks at top-level `\to`s so the statement reads
+// vertically: each hypothesis on its own line, with extra breathing
+// room before the final arrow (the conclusion). Every row starts
+// with `&` so the `aligned` environment left-aligns the whole stack
+// at a single column.
+function breakAtTopLevelArrows(tex) {
+  const positions = topLevelArrowPositions(tex);
+  if (positions.length === 0) return tex;
+  const pieces = [];
+  let cursor = 0;
+  for (let i = 0; i < positions.length; i++) {
+    const pos = positions[i];
+    const isLast = i === positions.length - 1;
+    pieces.push(tex.substring(cursor, pos).trimEnd());
+    // `\\\\` = LaTeX line break. `[10pt]` widens the gap before the
+    // conclusion arrow so hypotheses and conclusion read as distinct
+    // blocks. `&\to` / `&\implies` make every row align at the
+    // arrow column.
+    pieces.push(isLast ? ' \\\\[10pt]\n  &\\implies\\ ' : ' \\\\\n  &\\to\\ ');
+    cursor = pos + 3;            // skip "\to"
+    while (cursor < tex.length && /\s/.test(tex[cursor])) cursor++;
+  }
+  pieces.push(tex.substring(cursor));
+  // Leading `&` on the first row anchors it to the same column as the
+  // continuation rows, so the binder header and the arrows left-align.
+  return `\\begin{aligned}\n  &${pieces.join('')}\n\\end{aligned}`;
+}
+
 function renderTypeHtml(rawType, opts = {}) {
   if (!rawType) return '';
-  return texToKatexHtml(leanToLatex(rawType), opts);
+  const tex = breakAtTopLevelArrows(leanToLatex(rawType));
+  // Force display mode — the multi-line `aligned` only typesets right
+  // in display style.
+  return texToKatexHtml(tex, { ...opts, displayMode: true });
 }
 
 // ---------- Markers + side-by-side source ----------

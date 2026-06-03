@@ -22,7 +22,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,0..100,0..1;1,9..144,300..900,0..100,0..1&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./vendor/katex/katex.min.css?v=local-10">
 <script src="./vendor/katex/katex.min.js?v=local-10"></script>
-<script src="./card.js?v=11"></script>
+<script src="./card.js?v=12"></script>
 
 <style>
 :root {
@@ -1059,7 +1059,7 @@ function renderCard(d) {
     ? `<blockquote class="cb-preface">${A.escapeHtml(cb.preface)}</blockquote>`
     : '<div class="bn-empty">no preface</div>';
   const ednotesBody = (cb && cb.notes)
-    ? `<div class="cb-notes"><span class="cb-notes-label">Ed.</span> ${A.escapeHtml(cb.notes)}</div>`
+    ? `<div class="cb-notes">${A.escapeHtml(cb.notes)}</div>`
     : '<div class="bn-empty">no editorial notes</div>';
 
   return `

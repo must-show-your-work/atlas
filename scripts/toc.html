@@ -22,7 +22,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,0..100,0..1;1,9..144,300..900,0..100,0..1&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./vendor/katex/katex.min.css?v=local-10">
 <script src="./vendor/katex/katex.min.js?v=local-10"></script>
-<script src="./card.js?v=18"></script>
+<script src="./card.js?v=19"></script>
 
 <style>
 :root {
@@ -402,6 +402,13 @@ body.mode-production .bn-line:hover { background: transparent; }
    spans from its anchor down to the next marker in the same column
    (or the end). Within that span, text flows freely; vertical
    centering is anchored at the top via `align-self: start`. */
+/* Each cell type pins to a specific grid column. Without these,
+   `grid-auto-flow: row` packs all cells into column 1 in DOM order
+   and the three columns visually collapse. */
+.proof-col-quoting    { grid-column: 1; }
+.proof-col-source     { grid-column: 2; }
+.proof-col-commentary { grid-column: 3; }
+
 .proof-col-quoting,
 .proof-col-commentary,
 .proof-col-source {
@@ -918,7 +925,9 @@ async function removeLineFlag(declId, line) {
 }
 
 function applyLineFlagState() {
-  for (const el of document.querySelectorAll('.bn-line[data-line]')) {
+  // Source lines AND marker blocks both carry `data-line`; both
+  // visually highlight when their underlying line is flagged.
+  for (const el of document.querySelectorAll('.bn-line[data-line], .bn-marker[data-line]')) {
     const n = parseInt(el.dataset.line, 10);
     el.classList.toggle('flagged', isLineFlagged(n));
   }
@@ -1330,9 +1339,13 @@ document.getElementById('cardPane').addEventListener('click', async ev => {
     flag.textContent = on ? 'flagged' : 'flag';
     return;
   }
-  // Source line click → toggle flag (shift-click ranges from last
-  // clicked line to current). Has to come AFTER more specific buttons.
-  const line = ev.target.closest('.bn-line[data-line]');
+  // Source line OR marker block click → toggle flag (shift-click
+  // ranges from last clicked line to current). Has to come AFTER
+  // more specific buttons. Markers carry the same `data-line`
+  // attribute as source lines, so the same handler covers both —
+  // a `quoting` block flag and a flag on its source line are the
+  // same flag.
+  const line = ev.target.closest('.bn-line[data-line], .bn-marker[data-line]');
   if (line) {
     const slug = decodeURIComponent(location.hash.slice(1));
     const d = BY_SLUG.get(slug);

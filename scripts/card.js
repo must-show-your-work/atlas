@@ -587,6 +587,13 @@ function renderTypeHtml(rawType, opts = {}) {
 // ---------- Markers + side-by-side source ----------
 
 function renderMarkerLeft(m) {
+  // Every marker gets a `data-line` attribute carrying its source-
+  // line anchor. The click handler in toc.html treats marker blocks
+  // exactly like `.bn-line` source spans — a click toggles a line
+  // flag at `m.line`. Lets reviewers flag a specific quoting /
+  // comment without needing to dig out the original source line.
+  const line = (typeof m.line === 'number') ? m.line : 0;
+  const lineAttr = `data-line="${line}"`;
   if (m._kind === 'quoting') {
     const isExplicit = m.step != null;
     const stepChip = isExplicit
@@ -595,17 +602,17 @@ function renderMarkerLeft(m) {
     const pageChip = (isExplicit && m.resolvedPage != null)
       ? `<span class="bn-page">p.${m.resolvedPage}</span>` : '';
     const trail = m.trailing ? '<span class="bn-ellipsis">…</span>' : '';
-    return `<div class="bn-marker bn-marker-quoting">
+    return `<div class="bn-marker bn-marker-quoting" ${lineAttr}>
       ${stepChip}${pageChip}<span class="bn-text">${escapeHtml(m.text)}${trail}</span>
     </div>`;
   }
   if (m._kind === 'comment') {
-    return `<div class="bn-marker bn-marker-comment">
+    return `<div class="bn-marker bn-marker-comment" ${lineAttr}>
       <span class="bn-chip">Ed.</span><span class="bn-text">${escapeHtml(m.text)}</span>
     </div>`;
   }
   if (m._kind === 'page_break') {
-    return `<div class="bn-marker bn-marker-pagebreak">
+    return `<div class="bn-marker bn-marker-pagebreak" ${lineAttr}>
       <span class="bn-rule"></span><span class="bn-pagebreak-label">page break</span><span class="bn-rule"></span>
     </div>`;
   }
@@ -613,7 +620,7 @@ function renderMarkerLeft(m) {
     'idea','intuition','motivation','caution','aside','cf','todo','fixme','detail'
   ]);
   if (extendedKinds.has(m._kind)) {
-    return `<div class="bn-marker bn-marker-${m._kind}">
+    return `<div class="bn-marker bn-marker-${m._kind}" ${lineAttr}>
       <span class="bn-chip bn-chip-${m._kind}">${m._kind}</span><span class="bn-text">${escapeHtml(m.text)}</span>
     </div>`;
   }

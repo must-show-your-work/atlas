@@ -161,10 +161,12 @@ function leanToLatex(raw) {
     // setoid wrapper) Lean emits when comparing a Line to a Set. The
     // underlying X is the only thing the reader cares about; strip
     // the wrapper.
-    // Preserve parens around the unwrapped expr so subsequent rules
-    // that take ARG_PAT (paren-balanced) treat the result as one arg.
-    [/\\\{\s*toSet\s*:=\s*\(([^()]+)\)\.carrier\s*\\\}/g, '($1)'],
-    [/\\\{\s*toSet\s*:=\s*([^\s\\]+)\.carrier\s*\\\}/g, '($1)'],
+    // Drop the wrapper — the inner X often becomes a parenthesised
+    // expression of its own once subsequent rules (e.g. `Segment.between
+    // A B` → `(Segment A B)`) fire, so adding our own parens here
+    // causes a double-wrap that defeats post-tokenize ARG_PAT match.
+    [/\\\{\s*toSet\s*:=\s*\(([^()]+)\)\.carrier\s*\\\}/g, '$1'],
+    [/\\\{\s*toSet\s*:=\s*([^\s\\]+)\.carrier\s*\\\}/g, '$1'],
     // `Segment.between A B`, `Ray.from_ A B`, `LineThrough.through A B`
     // are the constructor forms. Reduce each to its bare-name shape so
     // the post-tokenize geom rules collapse it to `\overline{AB}`,
@@ -212,8 +214,11 @@ function leanToLatex(raw) {
   }
   s = out.join('');
 
-  // Geometry-specific aliases (run after tokenization).
-  const TOK = String.raw`(?:\\mathrm\{[^}]+\}|[A-Za-z]|\([^()]+\))`;
+  // Geometry-specific aliases (run after tokenization). TOK must match
+  // *anything* that an earlier rule could have emitted, so chains like
+  // `Intersects L \overline{AB} X` collapse all the way through. Order
+  // matters: longer alternatives first.
+  const TOK = String.raw`(?:\\(?:overleftrightarrow|overrightarrow|overline)\{[^{}]*\}|\\mathrm\{[^}]+\}|[A-Za-z]|\([^()]+\))`;
   const geom = [
     [new RegExp(`\\\\mathrm\\{LineThrough\\}\\s+(${TOK})\\s+(${TOK})`, 'g'),
      '\\overleftrightarrow{$1$2}'],

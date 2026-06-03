@@ -362,6 +362,134 @@ function texToKatexHtml(tex, { displayMode = false } = {}) {
   }
 }
 
+// Restructure the binder section of a `\forall …, body` so the
+// result reads close to what a mathematician would write:
+//
+//   - Type-binders (`{A : Point}`, `{B : Point}`, `{L : Line}`) drop
+//     the braces and merge consecutive ones of the same type into
+//     `∀ A B : Point, L : Line`.
+//   - Prop-binders (`{distinctABC : distinct A B C}`, `{h : A on L}`)
+//     drop the auto-generated name entirely and move into the body
+//     as `→`-hypotheses. The name was Lean machinery; the assertion
+//     is what the reader cares about.
+//
+// Walks the binder section by depth-tracked scanning (treats `\{`,
+// `\(`, `\)`, `\}` as bracket changes since brace-escape ran earlier).
+// If we can't find the top-level comma separating binders from body
+// (or there's no `\forall` to begin with), returns input unchanged.
+function restructureBinders(tex) {
+  const FOR = '\\forall';
+  if (!tex.startsWith(FOR)) return tex;
+  let i = FOR.length;
+  while (i < tex.length && /\s/.test(tex[i])) i++;
+  const binderStart = i;
+  let depth = 0;
+  let commaIdx = -1;
+  for (let j = binderStart; j < tex.length; j++) {
+    const c = tex[j];
+    if (c === '\\') {
+      const next = tex[j+1];
+      if (next === '{' || next === '(') { depth++; j++; continue; }
+      if (next === '}' || next === ')') { depth--; j++; continue; }
+      // Otherwise it's a macro like `\mathrm`, `\text`, etc. — skip
+      // the alphabetic macro name so its letters don't get scanned.
+      let k = j + 1;
+      while (k < tex.length && /[A-Za-z]/.test(tex[k])) k++;
+      j = k - 1;
+      continue;
+    }
+    if (c === '{' || c === '(') depth++;
+    else if (c === '}' || c === ')') depth--;
+    else if (c === ',' && depth === 0) { commaIdx = j; break; }
+  }
+  if (commaIdx === -1) return tex;
+  const binderSection = tex.substring(binderStart, commaIdx);
+  const body = tex.substring(commaIdx + 1).trimStart();
+
+  // Parse the binder section into individual `\{…\}` / `\(…\)` groups.
+  const binders = [];
+  let pos = 0;
+  while (pos < binderSection.length) {
+    while (pos < binderSection.length && /\s/.test(binderSection[pos])) pos++;
+    if (pos >= binderSection.length) break;
+    const open = binderSection.substr(pos, 2);
+    let close;
+    if (open === '\\{') close = '\\}';
+    else if (open === '\\(') close = '\\)';
+    else return tex;            // unexpected — bail and keep the original
+    let bDepth = 1;
+    let k = pos + 2;
+    while (k < binderSection.length && bDepth > 0) {
+      const two = binderSection.substr(k, 2);
+      if (two === open)  { bDepth++; k += 2; }
+      else if (two === close) { bDepth--; k += 2; }
+      else k++;
+    }
+    binders.push(binderSection.substring(pos + 2, k - 2));
+    pos = k;
+  }
+
+  // Each binder is `<vars> : <type>` — find the first ` : ` at depth 0.
+  const parsed = [];
+  for (const raw of binders) {
+    let d = 0;
+    let cut = -1;
+    for (let j = 0; j < raw.length - 2; j++) {
+      const c = raw[j];
+      if (c === '\\') {
+        const n = raw[j+1];
+        if (n === '{' || n === '(') { d++; j++; continue; }
+        if (n === '}' || n === ')') { d--; j++; continue; }
+        let k = j + 1;
+        while (k < raw.length && /[A-Za-z]/.test(raw[k])) k++;
+        j = k - 1;
+        continue;
+      }
+      if (c === '{' || c === '(') d++;
+      else if (c === '}' || c === ')') d--;
+      else if (d === 0 && raw.substr(j, 3) === ' : ') { cut = j; break; }
+    }
+    if (cut === -1) { parsed.push({ vars: raw.trim(), type: '' }); continue; }
+    parsed.push({
+      vars: raw.substring(0, cut).trim(),
+      type: raw.substring(cut + 3).trim(),
+    });
+  }
+
+  // Classify. A "type-binder" looks like `{A B : Point}` — type is a
+  // single capitalised \mathrm{} identifier. Everything else is a
+  // proposition (membership claim, equality, betweenness, etc.).
+  const isType = (t) => /^\\mathrm\{[A-Z]\w*\}$/.test(t);
+
+  // Walk binders, grouping consecutive type-binders sharing a type.
+  const groups = [];
+  for (const p of parsed) {
+    if (isType(p.type)) {
+      const last = groups[groups.length - 1];
+      if (last && last.kind === 'type' && last.type === p.type) {
+        last.vars += '\\,' + p.vars;
+      } else {
+        groups.push({ kind: 'type', vars: p.vars, type: p.type });
+      }
+    } else {
+      groups.push({ kind: 'prop', prop: p.type });
+    }
+  }
+
+  const typeBinders = groups.filter(g => g.kind === 'type');
+  const propBinders = groups.filter(g => g.kind === 'prop');
+
+  let out = '';
+  if (typeBinders.length > 0) {
+    out += '\\forall ' + typeBinders.map(g => `${g.vars} : ${g.type}`).join(', ') + ', ';
+  }
+  if (propBinders.length > 0) {
+    out += propBinders.map(g => g.prop).join(' \\to ') + ' \\to ';
+  }
+  out += body;
+  return out;
+}
+
 // Find indices of `\to` tokens that sit at the top level of `tex`
 // (not inside any `(...)` or `{...}`). Returns sorted positions of
 // the leading backslash. Used by `breakAtTopLevelArrows` to insert
@@ -419,7 +547,9 @@ function breakAtTopLevelArrows(tex) {
 
 function renderTypeHtml(rawType, opts = {}) {
   if (!rawType) return '';
-  const tex = breakAtTopLevelArrows(leanToLatex(rawType));
+  let tex = leanToLatex(rawType);
+  tex = restructureBinders(tex);     // drop Lean binder names + combine same-type
+  tex = breakAtTopLevelArrows(tex);  // multi-line aligned with conclusion set-off
   // Force display mode — the multi-line `aligned` only typesets right
   // in display style.
   return texToKatexHtml(tex, { ...opts, displayMode: true });

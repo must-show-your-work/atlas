@@ -127,13 +127,14 @@ html, body {
   grid-template-columns: repeat(12, 1fr);
   grid-template-rows: auto auto auto auto auto auto auto;
   grid-template-areas:
-    "head    head    head    head    head    head    head    head    head    head    head    head"
-    "title   title   title   title   title   title   figure  figure  figure  figure  figure  figure"
-    "stmt    stmt    stmt    stmt    stmt    stmt    figure  figure  figure  figure  figure  figure"
-    "meta    meta    meta    meta    meta    meta    figure  figure  figure  figure  figure  figure"
-    "proof   proof   proof   proof   proof   proof   proof   proof   proof   proof   proof   proof"
-    "refs    refs    refs    refs    refs    refs    refs    notes   notes   notes   notes   notes"
-    "footer  footer  footer  footer  footer  footer  footer  footer  footer  footer  footer  footer";
+    "head     head     head     head     head     head     head    head    head    head    head    head"
+    "title    title    title    title    title    title    figure  figure  figure  figure  figure  figure"
+    "preface  preface  preface  preface  preface  preface  figure  figure  figure  figure  figure  figure"
+    "stmt     stmt     stmt     stmt     stmt     stmt     figure  figure  figure  figure  figure  figure"
+    "ednotes  ednotes  ednotes  ednotes  ednotes  ednotes  figure  figure  figure  figure  figure  figure"
+    "proof    proof    proof    proof    proof    proof    proof   proof   proof   proof   proof   proof"
+    "refs     refs     refs     refs     refs     refs     refs    notes   notes   notes   notes   notes"
+    "footer   footer   footer   footer   footer   footer   footer  footer  footer  footer  footer  footer";
   column-gap: 24px;
   row-gap: 16px;
   align-content: start;
@@ -183,10 +184,23 @@ html, body {
 .card-section[data-section="figure"]      { grid-area: figure;
   display: flex; align-items: flex-start; flex-direction: column;
 }
-.card-section[data-section="meta"]        { grid-area: meta; }
+.card-section[data-section="preface"]     { grid-area: preface; }
+.card-section[data-section="ednotes"]     { grid-area: ednotes; }
 .card-section[data-section="proof"]       { grid-area: proof; }
 .card-section[data-section="references"]  { grid-area: refs; }
 .card-section[data-section="notes"]       { grid-area: notes; }
+/* Title cluster lives in the title area: long-form name plus the
+   inline page/alias chips, no duplicate h1. */
+.title-block { grid-area: title; }
+.title-block .cb-name {
+  font: 500 28px/1.18 "Fraunces", Georgia, serif;
+  letter-spacing: -0.012em; color: var(--ink); margin: 0 0 4px 0;
+}
+.title-block .title-meta {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline;
+  margin-top: 4px;
+}
+.title-block .cb-aliases, .title-block .cb-tags { margin: 0; }
 .card-section-label {
   font: 500 10px/1 "JetBrains Mono", monospace; letter-spacing: 0.16em;
   text-transform: uppercase; color: var(--ink-muted); margin-bottom: 8px;
@@ -872,12 +886,56 @@ function flaggableSection(name, label, body) {
     </section>`;
 }
 
+// Compute the set of absolute file lines that are part of a marker
+// syntax (`quoting (N) "…"` / `comment "…"` / `idea "…"` / …). These
+// lines are rendered as their parsed marker block in the LHS or RHS
+// proof column, so we blank the middle code cell to avoid duplication.
+// The opening line + every continuation line of the string literal
+// are all marked; quoted strings can span multiple source lines.
+const MARKER_KW = /^\s*(quoting|comment|idea|intuition|motivation|caution|aside|cf|todo|fixme|detail|page_break)\b/;
+function computeMarkerLines(source, baseLine) {
+  const elided = new Set();
+  const lines = source.split('\n');
+  let i = 0;
+  while (i < lines.length) {
+    if (!MARKER_KW.test(lines[i])) { i++; continue; }
+    elided.add(baseLine + i);
+    // Track string literal across lines: count backslash escapes, find
+    // the unescaped closing quote. If the marker has no string (e.g.
+    // `page_break` is just a bare keyword), `inString` stays false and
+    // we elide only the single line.
+    let inString = false;
+    let scanIdx = 0;
+    let k = i;
+    while (k < lines.length) {
+      const ln = lines[k];
+      while (scanIdx < ln.length) {
+        const ch = ln[scanIdx];
+        if (ch === '\\') { scanIdx += 2; continue; }
+        if (ch === '"') {
+          inString = !inString;
+          scanIdx++;
+          if (!inString) break;
+          continue;
+        }
+        scanIdx++;
+      }
+      if (!inString) break;
+      k++;
+      if (k < lines.length) elided.add(baseLine + k);
+      scanIdx = 0;
+    }
+    i = k + 1;
+  }
+  return elided;
+}
+
 // Render a 3-col proof view from the source + markers. Left column =
 // author quotes (the `quoting` markers). Middle = lean source, line by
-// line. Right column = editor commentary (`comment`, `idea`,
-// `intuition`, etc.) plus future inline figure deltas (TODO).
-// Each row is one source line; markers attach to their `line` and
-// stack vertically on the same row if multiple share a line.
+// line — with marker-syntax lines blanked so they don't duplicate
+// what's already shown in the LHS/RHS. Right column = editor
+// commentary (`comment`, `idea`, `intuition`, etc.) plus future
+// inline figure deltas from `auxiliary { … }` blocks (TODO #67).
 function renderProofTriColumn(d) {
   const source = d.source || '';
   if (!source) {
@@ -886,8 +944,8 @@ function renderProofTriColumn(d) {
   const baseLine = d.line_start || 1;
   const lines = source.split('\n');
   const ms = (window.markersByDecl && window.markersByDecl[d.id]) || [];
-  const leftByLine = {};   // quoting markers (LHS)
-  const rightByLine = {};  // editor markers (RHS)
+  const leftByLine = {};
+  const rightByLine = {};
   for (const m of ms) {
     if (m._kind === 'quoting' || m._kind === 'page_break') {
       (leftByLine[m.line] ||= []).push(m);
@@ -895,13 +953,17 @@ function renderProofTriColumn(d) {
       (rightByLine[m.line] ||= []).push(m);
     }
   }
+  const elided = computeMarkerLines(source, baseLine);
   const rows = lines.map((ln, i) => {
     const abs = baseLine + i;
     const left  = (leftByLine[abs]  || []).map(A.renderMarkerLeft).join('');
     const right = (rightByLine[abs] || []).map(A.renderMarkerLeft).join('');
-    const codeInner = A.highlightLean(ln) || '&nbsp;';
-    const codeLine = `<span class="bn-line" data-line="${abs}">${codeInner}</span>`;
-    return `<div class="proof-row">
+    const isElided = elided.has(abs);
+    const codeInner = isElided
+      ? ''   // marker-syntax line — the marker block fills LHS/RHS instead
+      : (A.highlightLean(ln) || '&nbsp;');
+    const codeLine = `<span class="bn-line${isElided ? ' bn-line-elided' : ''}" data-line="${abs}">${codeInner}</span>`;
+    return `<div class="proof-row${isElided ? ' proof-row-marker' : ''}">
       <div class="proof-col-quoting">${left}</div>
       <div class="proof-col-source"><pre class="bn-code">${codeLine}</pre></div>
       <div class="proof-col-commentary">${right}</div>
@@ -919,25 +981,37 @@ function renderCard(d) {
     ? `<div class="card-figure">${d.figure_svg}</div>`
     : `<div class="card-figure placeholder">no figure</div>`;
 
-  // The "meta" tile collects everything the reader needs about the
-  // theorem *as an object*: docstring, the commentary block's
-  // name/aliases/page/preface/notes. Editorial inline markers
-  // (idea/intuition/etc.) flow into the proof tile's RHS column.
-  const metaParts = [];
-  if (d.doc) metaParts.push(`<div class="card-doc">${A.escapeHtml(d.doc)}</div>`);
-  if (cb) {
-    const aliases = (cb.aliases && cb.aliases.length)
-      ? `<div class="cb-aliases">aka: ${cb.aliases.map(a => `<span class="cb-alias-chip">${A.escapeHtml(a)}</span>`).join(' ')}</div>` : '';
-    const tags = (cb.tags && cb.tags.length)
-      ? `<div class="cb-tags">${cb.tags.map(t => `<span class="cb-tag-chip">#${A.escapeHtml(t)}</span>`).join(' ')}</div>` : '';
-    const page = cb.page
-      ? `<span class="cb-page">📖 p.${A.escapeHtml(cb.page)}${cb.page_end ? '–' + A.escapeHtml(cb.page_end) : ''}</span>` : '';
-    const name = cb.name ? `<div class="cb-name">${A.escapeHtml(cb.name)}</div>` : '';
-    const preface = cb.preface ? `<blockquote class="cb-preface">${A.escapeHtml(cb.preface)}</blockquote>` : '';
-    const notes = cb.notes ? `<div class="cb-notes"><span class="cb-notes-label">Ed.</span> ${A.escapeHtml(cb.notes)}</div>` : '';
-    metaParts.push(`<div class="cb-head">${name}${page}</div>${aliases}${tags}${preface}${notes}`);
+  // Title cluster: the long-form name (from commentary) wins over
+  // `atlas_title` since the commentary's `name` is usually richer.
+  // Aliases/tags/page sit right under as inline chips; the docstring
+  // (if any) follows as a small italic subtitle.
+  const titleName = (cb && cb.name) || d.atlas_title || d.label;
+  const titleMetaChips = [];
+  if (cb && cb.page) {
+    const pe = cb.page_end ? '–' + A.escapeHtml(cb.page_end) : '';
+    titleMetaChips.push(`<span class="cb-page">📖 p.${A.escapeHtml(cb.page)}${pe}</span>`);
   }
-  const metaBody = metaParts.join('') || '<div class="bn-empty">no metadata</div>';
+  if (cb && cb.aliases && cb.aliases.length) {
+    titleMetaChips.push(`<div class="cb-aliases">aka: ${cb.aliases.map(a =>
+      `<span class="cb-alias-chip">${A.escapeHtml(a)}</span>`).join(' ')}</div>`);
+  }
+  if (cb && cb.tags && cb.tags.length) {
+    titleMetaChips.push(`<div class="cb-tags">${cb.tags.map(t =>
+      `<span class="cb-tag-chip">#${A.escapeHtml(t)}</span>`).join(' ')}</div>`);
+  }
+  const titleBlock = `
+    <section class="title-block">
+      <div class="cb-name">${A.escapeHtml(titleName)}</div>
+      ${titleMetaChips.length ? `<div class="title-meta">${titleMetaChips.join('')}</div>` : ''}
+      ${d.doc ? `<div class="card-doc">${A.escapeHtml(d.doc)}</div>` : ''}
+    </section>`;
+
+  const prefaceBody = (cb && cb.preface)
+    ? `<blockquote class="cb-preface">${A.escapeHtml(cb.preface)}</blockquote>`
+    : '<div class="bn-empty">no preface</div>';
+  const ednotesBody = (cb && cb.notes)
+    ? `<div class="cb-notes"><span class="cb-notes-label">Ed.</span> ${A.escapeHtml(cb.notes)}</div>`
+    : '<div class="bn-empty">no editorial notes</div>';
 
   return `
     <header class="card-head">
@@ -945,10 +1019,11 @@ function renderCard(d) {
       ${d.atlas_number ? `<span class="card-head-sep">·</span><span class="card-head-number">${A.escapeHtml(d.atlas_number)}</span>` : ''}
       ${d.has_sorry ? '<span class="card-head-sorry">sorry</span>' : ''}
     </header>
-    <h1 class="card-title">${A.escapeHtml(d.atlas_title || d.label)}</h1>
+    ${titleBlock}
 
+    ${flaggableSection('preface',   'preface',   prefaceBody)}
     ${flaggableSection('statement', 'statement', statementBody)}
-    ${flaggableSection('meta',      'metadata',  metaBody)}
+    ${flaggableSection('ednotes',   'ed. notes', ednotesBody)}
     ${flaggableSection('figure',    'figure',    figureBody)}
     ${flaggableSection('proof',     'proof',     renderProofTriColumn(d))}
     ${renderRefsSection(d)}

@@ -578,6 +578,7 @@ function renderTypeHtml(rawType, opts = {}) {
   if (!rawType) return '';
   let tex = leanToLatex(rawType);
   tex = restructureBinders(tex);     // drop Lean binder names + combine same-type
+  tex = stripPredicateParens(tex);   // drop redundant `(P)` around atoms
   tex = breakAtTopLevelArrows(tex);  // multi-line aligned with conclusion set-off
   // Force display mode — the multi-line `aligned` only typesets right
   // in display style.
@@ -602,13 +603,15 @@ function renderMarkerLeft(m) {
     const pageChip = (isExplicit && m.resolvedPage != null)
       ? `<span class="bn-page">p.${m.resolvedPage}</span>` : '';
     const trail = m.trailing ? '<span class="bn-ellipsis">…</span>' : '';
+    // Wrap chips in a single grid-column slot so step + page stay
+    // together regardless of how many chips a marker carries.
     return `<div class="bn-marker bn-marker-quoting" ${lineAttr}>
-      ${stepChip}${pageChip}<span class="bn-text">${escapeHtml(m.text)}${trail}</span>
+      <span class="bn-chip-slot">${stepChip}${pageChip}</span><span class="bn-text">${escapeHtml(m.text)}${trail}</span>
     </div>`;
   }
   if (m._kind === 'comment') {
     return `<div class="bn-marker bn-marker-comment" ${lineAttr}>
-      <span class="bn-chip">Ed.</span><span class="bn-text">${escapeHtml(m.text)}</span>
+      <span class="bn-chip-slot"><span class="bn-chip">Ed.</span></span><span class="bn-text">${escapeHtml(m.text)}</span>
     </div>`;
   }
   if (m._kind === 'page_break') {
@@ -621,7 +624,7 @@ function renderMarkerLeft(m) {
   ]);
   if (extendedKinds.has(m._kind)) {
     return `<div class="bn-marker bn-marker-${m._kind}" ${lineAttr}>
-      <span class="bn-chip bn-chip-${m._kind}">${m._kind}</span><span class="bn-text">${escapeHtml(m.text)}</span>
+      <span class="bn-chip-slot"><span class="bn-chip bn-chip-${m._kind}">${m._kind}</span></span><span class="bn-text">${escapeHtml(m.text)}</span>
     </div>`;
   }
   return '';

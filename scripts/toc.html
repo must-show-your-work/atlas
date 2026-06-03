@@ -22,7 +22,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,0..100,0..1;1,9..144,300..900,0..100,0..1&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./vendor/katex/katex.min.css?v=local-10">
 <script src="./vendor/katex/katex.min.js?v=local-10"></script>
-<script src="./card.js?v=21"></script>
+<script src="./card.js?v=22"></script>
 
 <style>
 :root {
@@ -443,7 +443,10 @@ body.mode-production .bn-line:hover { background: transparent; }
   margin: 0; padding: 0;
   background: transparent; color: var(--ink);
   font: 400 12px/1.55 "JetBrains Mono", monospace;
-  white-space: pre-wrap;
+  /* Source preserves its source-file shape: never wrap a line that
+     wasn't already wrapped in the underlying .lean file. The middle
+     column sizes via `auto` to absorb the longest line. */
+  white-space: pre;
 }
 .proof-col-commentary .bn-marker { margin: 1px 0; }
 .bn-empty {
@@ -498,7 +501,14 @@ body.mode-production .bn-line:hover { background: transparent; }
   font: 400 12px/1.55 "JetBrains Mono", monospace;
   white-space: pre; overflow-x: auto;
 }
-.bn-marker { display: flex; align-items: baseline; gap: 0.45em; }
+/* Two-column grid per marker so the chip and the text track in
+   consistent columns. The chip column has a fixed width per side
+   (LHS narrower for `(N)`-style step chips, RHS wider for words
+   like `motivation` / `intuition`) so the chip slot stays aligned
+   across all markers in the same column. */
+.bn-marker { display: grid; gap: 0.5em; align-items: baseline; }
+.proof-col-quoting    .bn-marker { grid-template-columns: 2.5em 1fr; }
+.proof-col-commentary .bn-marker { grid-template-columns: 6em   1fr; }
 .bn-marker-quoting .bn-text { font-style: italic; color: var(--ink-soft); }
 .bn-marker-comment { color: var(--ink-muted); }
 /* Match the parent column's `font-size: 13px` so quoting and comment
@@ -520,6 +530,11 @@ body.mode-production .bn-line:hover { background: transparent; }
   /* Stay an atomic unit even when the surrounding column has to
      wrap text. Prevents `(4)` from splitting across lines. */
   display: inline-block; white-space: nowrap;
+}
+/* All chips for a marker sit in column 1 of the per-marker grid. */
+.bn-chip-slot {
+  display: inline-flex; flex-direction: row; flex-wrap: wrap;
+  gap: 0.25em; align-items: baseline;
 }
 .bn-page { background: rgba(44, 79, 80, 0.15); color: var(--teal); }
 .bn-step-cont { background: rgba(184, 166, 133, 0.25); color: var(--ink-muted); }

@@ -165,11 +165,15 @@ function leanToLatex(raw) {
     // that take ARG_PAT (paren-balanced) treat the result as one arg.
     [/\\\{\s*toSet\s*:=\s*\(([^()]+)\)\.carrier\s*\\\}/g, '($1)'],
     [/\\\{\s*toSet\s*:=\s*([^\s\\]+)\.carrier\s*\\\}/g, '($1)'],
-    // `Segment.between A B` is the constructor form of a segment AB.
-    // Wrap in parens so a containing `Subset (Segment.between A B)` etc.
-    // sees it as a single ARG_PAT match; then the post-tokenize geom
-    // rule maps `Segment A B` → `\overline{AB}`.
+    // `Segment.between A B`, `Ray.from_ A B`, `LineThrough.through A B`
+    // are the constructor forms. Reduce each to its bare-name shape so
+    // the post-tokenize geom rules collapse it to `\overline{AB}`,
+    // `\overrightarrow{AB}`, `\overleftrightarrow{AB}` respectively.
+    // Wrap in parens so a containing `Subset (Segment.between A B)`
+    // sees it as a single ARG_PAT match.
     [new RegExp(`Segment\\.between (${ARG_PAT}) (${ARG_PAT})`, 'g'), '(Segment $1 $2)'],
+    [new RegExp(`Ray\\.from_ (${ARG_PAT}) (${ARG_PAT})`, 'g'), '(Ray $1 $2)'],
+    [new RegExp(`LineThrough\\.through (${ARG_PAT}) (${ARG_PAT})`, 'g'), '(LineThrough $1 $2)'],
     [new RegExp(`\\bIff (${ARG_PAT}) (${ARG_PAT})`, 'g'), '$1 ↔ $2'],
     [new RegExp(`\\bOr (${ARG_PAT}) (${ARG_PAT})`,  'g'), '$1 ∨ $2'],
     [new RegExp(`\\bAnd (${ARG_PAT}) (${ARG_PAT})`, 'g'), '$1 ∧ $2'],

@@ -49,6 +49,14 @@ graph-view port="8765":
     @echo "Open http://localhost:{{port}}/scripts/graph.html"
     @python -m http.server {{port}}
 
+# Serve the table-of-contents viewer (parallel to `graph-view`). Same
+# data source; left pane lists all atlas decls grouped by kind/file,
+# right pane renders the selected decl's card. The card layout here is
+# the source of truth that the graph view will eventually adopt.
+toc-view port="8765":
+    @echo "Open http://localhost:{{port}}/scripts/toc.html"
+    @python -m http.server {{port}}
+
 # Run a bundled query, or list them when called with no name.
 #   `just q`              — list all queries with one-line descriptions
 #   `just q sorry_blocked`— print the query's legend, then run it

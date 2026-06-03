@@ -41,10 +41,16 @@ require(path.join(__dirname, 'card.js'));
 const A = global.AtlasCard;
 
 const KNOWN_GOOD = new Set([
+  // Geometric primitives
   'Point', 'Line', 'LineSegment', 'Ray', 'Segment',
   'Circle', 'Angle', 'Triangle', 'HalfPlane',
-  'Set', 'Prop', 'Type', 'Sort', 'Nat', 'Bool',
+  // Container/structural
+  'Set', 'List', 'Prop', 'Type', 'Sort', 'Nat', 'Bool',
   'True', 'False', 'And', 'Or', 'Not',
+  // Greenberg / giyf-specific predicates that read fine as their bare name
+  'Arrangement', 'Consequences',
+  // Half-plane convention binders the user uses ('left'/'right' half-planes)
+  'Hl', 'Hr',
 ]);
 
 const LINTS = [

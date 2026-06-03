@@ -119,12 +119,17 @@ const LEAN_TO_TEX_OPS = [
   ['⊢','\\vdash '],['⊥','\\bot '],['⊤','\\top '],['∎','\\blacksquare '],
 ];
 
-// Balanced parenthesised expression up to 4 levels, or a dotted ident.
+// Balanced parenthesised expression up to 4 levels, a bracket-balanced
+// list literal, or a token that runs to whitespace. The bare-token
+// alternative includes Lean idents plus the unicode operators earlier
+// rewrites emit (∅, ∪, ∩, ⊊, ⊆, ≠) so that chains like `Eq (L ∩ M) ∅`
+// see `∅` as a single token. The bracket alternative lets `List.cons C [\,]`
+// match by treating the nil placeholder as a single arg.
 const ARG_PAT = (() => {
   const grow = (inner) => String.raw`\([^()]*(?:${inner}[^()]*)*\)`;
   let p = String.raw`\([^()]*\)`;
   p = grow(p); p = grow(p); p = grow(p); p = grow(p);
-  return String.raw`(?:${p}|[\w.]+)`;
+  return String.raw`(?:${p}|\[[^\[\]]*\]|[\w.∅∪∩⊊⊆≠⊥⊤]+)`;
 })();
 
 function leanToLatex(raw) {
@@ -166,11 +171,43 @@ function leanToLatex(raw) {
     // `Set.instMembership.mem`, `instMembershipPointLine.mem`, etc. all
     // mean "first arg contains second" — Lean's `Membership α β` instance
     // has `mem : β → α → Prop` so the FQN-first form is `mem container elt`.
-    [new RegExp(`\\binst\\w*[Mm]embership\\w*\\.mem (${ARG_PAT}) (${ARG_PAT})`, 'g'), '$2 ∈ $1'],
-    [new RegExp(`Set\\.instMembership\\.mem (${ARG_PAT}) (${ARG_PAT})`, 'g'), '$2 ∈ $1'],
-    // Same generalization for HasSubset: `instHasSubsetLine.Subset A B` → `A ⊆ B`.
-    [new RegExp(`\\binst\\w*HasSubset\\w*\\.Subset (${ARG_PAT}) (${ARG_PAT})`, 'g'), '$1 ⊆ $2'],
-    [new RegExp(`Set\\.instHasSubset\\.Subset (${ARG_PAT}) (${ARG_PAT})`, 'g'), '$1 ⊆ $2'],
+    // The leading `(?:[\w.]+\.)?` consumes the type-prefix (e.g.
+    // `Set.`) so it doesn't survive past the collapse.
+    [new RegExp(`(?:[\\w.]+\\.)?inst\\w*[Mm]embership\\w*\\.mem (${ARG_PAT}) (${ARG_PAT})`, 'g'), '$2 ∈ $1'],
+    // Subset variants — `Set.instHasSubset`, `instHasSubsetLine`, …
+    [new RegExp(`(?:[\\w.]+\\.)?inst\\w*HasSubset\\w*\\.Subset (${ARG_PAT}) (${ARG_PAT})`, 'g'), '$1 ⊆ $2'],
+    // Strict subset (⊊)
+    [new RegExp(`(?:[\\w.]+\\.)?inst\\w*HasSSubset\\w*\\.SSubset (${ARG_PAT}) (${ARG_PAT})`, 'g'), '$1 ⊊ $2'],
+    // Set ∪ / ∩ / ∅ — handle both the dotted-prefix and bare forms so
+    // `Set.instInter.inter A B`, `instInterLine.inter A B`, etc. all
+    // collapse to the operator notation.
+    [new RegExp(`(?:[\\w.]+\\.)?inst\\w*Union\\w*\\.union (${ARG_PAT}) (${ARG_PAT})`, 'g'), '$1 ∪ $2'],
+    [new RegExp(`(?:[\\w.]+\\.)?inst\\w*Inter\\w*\\.inter (${ARG_PAT}) (${ARG_PAT})`, 'g'), '$1 ∩ $2'],
+    [/(?:[\w.]+\.)?inst\w*EmptyCollection\w*\.emptyCollection/g, '∅'],
+    // Splits / Guards: Greenberg's geometry uses these as ternary
+    // relations. `Splits L A B` reads "L splits A and B"; `Guards`
+    // takes the line in the THIRD slot (point, point, line). Both
+    // typeset like the SameSide-derived rules; sentinel codepoints
+    // (private-use) survive tokenize and get expanded in the geom
+    // block.
+    [new RegExp(`\\bSplits (${ARG_PAT}) (${ARG_PAT}) (${ARG_PAT})`, 'g'), '$1  $2, $3'],
+    [new RegExp(`\\bGuards (${ARG_PAT}) (${ARG_PAT}) (${ARG_PAT})`, 'g'), '$3  $1, $2'],
+    // List cons — `List.cons A xs` is `A :: xs`. Recursive rule chain
+    // lets `List.cons A (List.cons B (List.cons C rest))` reduce to
+    // `A :: B :: C :: rest`. Will compose into a list literal in a
+    // future pass if needed.
+    [new RegExp(`(?:[\\w.]+\\.)?List\\.cons (${ARG_PAT}) (${ARG_PAT})`, 'g'), '$1 :: $2'],
+    // Strip List.nil down to []
+    [/(?:[\w.]+\.)?List\.nil\b/g, '[\\,]'],
+    // `instSingletonPointLine.singleton X` → `{X}`.
+    // Excludes `Finset.instSingleton.singleton X` via negative lookbehind:
+    // the Finset literal goes through the `⦃ … ⦄` placeholder chain
+    // below so multi-element forms (`insert A ⦃B, C⦄`) compose.
+    [new RegExp(`(?<!Finset\\.)\\binst\\w*Singleton\\w*\\.singleton (${ARG_PAT})`, 'g'), '\\{$1\\}'],
+    // Universe-variable noise. Lean prints `u_1` etc. for synthesised
+    // universe params; in our domain we're always in `Type 0` so it's
+    // never informative. Hide.
+    [/\bu_\d+\b/g, ''],
     // `{ toSet := X.carrier }` is the Line→Set coercion (or similar
     // setoid wrapper) Lean emits when comparing a Line to a Set. The
     // underlying X is the only thing the reader cares about; strip
@@ -181,6 +218,11 @@ function leanToLatex(raw) {
     // causes a double-wrap that defeats post-tokenize ARG_PAT match.
     [/\\\{\s*toSet\s*:=\s*\(([^()]+)\)\.carrier\s*\\\}/g, '$1'],
     [/\\\{\s*toSet\s*:=\s*([^\s\\]+)\.carrier\s*\\\}/g, '$1'],
+    // `.carrier` accessor on a bare/parenthesised expr (not inside a
+    // `{toSet := ...}` wrapper — that's handled by the rules above).
+    // Must come AFTER toSet so the wrapper's `.carrier` anchor is
+    // still present for that rule to recognise.
+    [/(\)|\b[\w]+)\.carrier\b/g, '$1'],
     // `Segment.between A B`, `Ray.from_ A B`, `LineThrough.through A B`
     // are the constructor forms. Reduce each to its bare-name shape so
     // the post-tokenize geom rules collapse it to `\overline{AB}`,
@@ -257,12 +299,14 @@ function leanToLatex(raw) {
     // must come before the bare `Distinct → \text{distinct}\,` below.
     [new RegExp(`\\\\mathrm\\{Distinct\\}\\s+(${TOK}|\\\\\\{[^\\\\]*\\\\\\})\\s+\\d+`, 'g'),
      '\\text{distinct}\\,$1'],
-    // Convert the on/off sentinels emitted by the pre-tokenize
-    // Point-membership rules into proper `\text{ … }` macros. Has
-    // to be in the geom block (post-tokenize) so `text` itself
+    // Convert the on/off/splits/guards sentinels emitted by the
+    // pre-tokenize relation rules into proper `\text{ … }` macros.
+    // Has to be in the geom block (post-tokenize) so `text` itself
     // doesn't get re-wrapped in `\mathrm{}`.
     [//g, '\\text{ on }'],
     [//g, '\\text{ off }'],
+    [//g, '\\text{ splits } '],
+    [//g, '\\text{ guards } '],
     [/\\mathrm\{Distinct\}/g,   '\\text{distinct}\\,'],
     [/\\mathrm\{Collinear\}/g,  '\\text{collinear}\\,'],
     [/\\mathrm\{Concurrent\}/g, '\\text{concurrent}\\,'],

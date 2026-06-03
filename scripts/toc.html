@@ -22,7 +22,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,0..100,0..1;1,9..144,300..900,0..100,0..1&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./vendor/katex/katex.min.css?v=local-10">
 <script src="./vendor/katex/katex.min.js?v=local-10"></script>
-<script src="./card.js?v=6"></script>
+<script src="./card.js?v=7"></script>
 
 <style>
 :root {
@@ -70,6 +70,15 @@ html, body {
 .toc-search { width: 100%; }
 .toc-search:focus, .toc-group-by:focus { outline: none; border-color: var(--ink-ghost); }
 .toc-group-by { font: 11px/1.4 "JetBrains Mono", monospace; letter-spacing: 0.04em; color: var(--ink-muted); }
+.export-wireframe {
+  margin-top: 10px;
+  padding: 5px 10px; background: var(--paper); border: 1px solid var(--paper-deep);
+  border-radius: 3px; color: var(--ink-muted); cursor: pointer;
+  font: 11px/1.4 "JetBrains Mono", monospace; letter-spacing: 0.04em;
+  width: 100%; text-align: left;
+}
+.export-wireframe:hover { color: var(--accent); border-color: var(--ink-ghost); }
+.export-wireframe:disabled { color: var(--ink-ghost); cursor: default; }
 .toc-list { overflow-y: auto; padding: 8px 0 60px; }
 .toc-group { padding: 14px 22px 6px; }
 .toc-group-label {
@@ -256,6 +265,26 @@ html, body {
   overflow-x: auto; max-height: 540px; overflow-y: auto;
   white-space: pre;
 }
+
+/* Per-line flag targets. Each source line is wrapped in a `bn-line`
+   span tagged with the absolute file line number. Click toggles a
+   single-line flag; shift-click range-flags from the last clicked. */
+.bn-line {
+  display: inline-block; width: 100%;
+  padding-left: 6px; margin-left: -6px;
+  border-left: 3px solid transparent;
+  cursor: pointer; transition: background-color 80ms;
+}
+.bn-line:hover { background: rgba(152, 51, 39, 0.06); }
+.bn-line.flagged {
+  border-left-color: var(--accent);
+  background: rgba(152, 51, 39, 0.10);
+}
+.bn-source-plain .bn-line:hover { background: rgba(232, 220, 200, 0.08); }
+.bn-source-plain .bn-line.flagged {
+  border-left-color: #d27a6a;
+  background: rgba(210, 122, 106, 0.12);
+}
 .bn-grid {
   border: 1px solid var(--paper-deep); border-radius: 3px;
   background: var(--paper-soft); overflow: hidden;
@@ -350,6 +379,10 @@ html, body {
           <option value="file">group by file</option>
         </select>
       </div>
+      <button class="export-wireframe" id="exportWireframe"
+              title="Export the current card layout as an SVG wireframe">
+        ⇣ wireframe
+      </button>
     </header>
     <div class="toc-list" id="tocList"></div>
   </aside>
@@ -609,6 +642,56 @@ function renderRefsSection(d) {
     </section>`;
 }
 
+// ---------- Line flags ----------
+// Per-line flags within the source pane. State is `LINE_FLAGS: line → ts`
+// for the currently-selected decl (fetched fresh on each selectSlug).
+// Shift-click on a line range-flags from `LINE_LAST_CLICKED` to the
+// clicked line; plain click toggles a single line.
+
+const API_LINE_FLAGS = '/api/line-flags';
+let LINE_FLAGS = {};      // map from string-line → ISO timestamp
+let LINE_LAST_CLICKED = null;
+
+async function fetchLineFlags(declId) {
+  try {
+    const r = await fetch(`${API_LINE_FLAGS}?decl=${encodeURIComponent(declId)}`,
+                          { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    LINE_FLAGS = await r.json();
+  } catch (e) {
+    console.warn('line-flags load failed:', e);
+    LINE_FLAGS = {};
+  }
+}
+
+function isLineFlagged(line) { return !!LINE_FLAGS[String(line)]; }
+
+async function addLineFlag(declId, line) {
+  LINE_FLAGS[String(line)] = new Date().toISOString();
+  try {
+    await fetch(API_LINE_FLAGS, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decl_id: declId, line }),
+    });
+  } catch (e) { console.warn('line-flag add failed:', e); }
+}
+
+async function removeLineFlag(declId, line) {
+  delete LINE_FLAGS[String(line)];
+  try {
+    await fetch(`${API_LINE_FLAGS}/${encodeURIComponent(declId)}/${line}`,
+                { method: 'DELETE' });
+  } catch (e) { console.warn('line-flag delete failed:', e); }
+}
+
+function applyLineFlagState() {
+  for (const el of document.querySelectorAll('.bn-line[data-line]')) {
+    const n = parseInt(el.dataset.line, 10);
+    el.classList.toggle('flagged', isLineFlagged(n));
+  }
+}
+
 // ---------- Notes ----------
 
 const API_NOTES = '/api/notes';
@@ -742,12 +825,17 @@ async function selectSlug(slug) {
     el.classList.toggle('active', el.dataset.slug === slug);
   }
   history.replaceState(null, '', `#${encodeURIComponent(slug)}`);
-  // Notes load asynchronously so the rest of the card renders without
-  // waiting on the network. If the user clicks to another decl before
-  // this fetch resolves, the host element is gone; check before writing.
-  const notes = await fetchNotes(d.id);
-  const host = pane.querySelector(`[data-notes-host="${CSS.escape(d.id)}"]`);
-  if (host) host.outerHTML = renderNotesSection(d.id, notes);
+  // Async tier: notes + line-flags both depend on a server round-trip
+  // and shouldn't block initial render. If the user clicks to another
+  // decl before these settle, the host elements are gone; bail.
+  LINE_FLAGS = {}; LINE_LAST_CLICKED = null;
+  await Promise.all([
+    fetchNotes(d.id).then(notes => {
+      const host = pane.querySelector(`[data-notes-host="${CSS.escape(d.id)}"]`);
+      if (host) host.outerHTML = renderNotesSection(d.id, notes);
+    }),
+    fetchLineFlags(d.id).then(() => applyLineFlagState()),
+  ]);
   applyFlagState(d.id);
 }
 
@@ -821,6 +909,29 @@ document.getElementById('cardPane').addEventListener('click', async ev => {
     flag.textContent = on ? 'flagged' : 'flag';
     return;
   }
+  // Source line click → toggle flag (shift-click ranges from last
+  // clicked line to current). Has to come AFTER more specific buttons.
+  const line = ev.target.closest('.bn-line[data-line]');
+  if (line) {
+    const slug = decodeURIComponent(location.hash.slice(1));
+    const d = BY_SLUG.get(slug);
+    if (!d) return;
+    const n = parseInt(line.dataset.line, 10);
+    if (ev.shiftKey && LINE_LAST_CLICKED != null && LINE_LAST_CLICKED !== n) {
+      const [lo, hi] = n < LINE_LAST_CLICKED ? [n, LINE_LAST_CLICKED] : [LINE_LAST_CLICKED, n];
+      // Range adds — never deletes — so shift-click expands a region
+      // without accidentally clearing flags that overlap the range.
+      for (let k = lo; k <= hi; k++) {
+        if (!isLineFlagged(k)) await addLineFlag(d.id, k);
+      }
+    } else {
+      if (isLineFlagged(n)) await removeLineFlag(d.id, n);
+      else                  await addLineFlag(d.id, n);
+    }
+    LINE_LAST_CLICKED = n;
+    applyLineFlagState();
+    return;
+  }
   const chip = ev.target.closest('.ref-chip[data-target-slug]');
   if (chip) selectSlug(chip.dataset.targetSlug);
 });
@@ -835,6 +946,75 @@ document.getElementById('cardPane').addEventListener('keydown', ev => {
 });
 document.getElementById('search').addEventListener('input', groupAndRender);
 document.getElementById('groupBy').addEventListener('change', groupAndRender);
+
+// Wireframe export: walks the rendered card and emits an SVG with one
+// labeled rectangle per major region. Loaded into Figma / Excalidraw /
+// Penpot as a starting point for layout sketches. One-way for v1 —
+// the user iterates in their tool and feeds layout specs back by
+// hand (or eventually, via a Grid-Template import we don't have yet).
+function exportWireframe() {
+  const pane = document.getElementById('cardPane');
+  const slug = decodeURIComponent(location.hash.slice(1));
+  if (!slug || !BY_SLUG.has(slug)) {
+    alert('Select a decl first.');
+    return;
+  }
+  const paneRect = pane.getBoundingClientRect();
+  // Capture every region whose layout the user might want to rearrange:
+  // the title/doc strip, the data-section blocks, and the meta footer.
+  const selectors = [
+    '.card-head', '.card-title', '.card-doc',
+    '.card-section[data-section]',
+    '.card-meta', '.card-fqn',
+  ];
+  const tiles = [];
+  for (const sel of selectors) {
+    for (const el of pane.querySelectorAll(sel)) {
+      const r = el.getBoundingClientRect();
+      const id = el.dataset.section
+              || el.className.split(/\s+/).find(c => c.startsWith('card-'))
+              || el.tagName.toLowerCase();
+      // Translate from viewport coords into pane-local + un-scroll so
+      // the SVG covers the full card, not just what's currently visible.
+      tiles.push({
+        id,
+        x: r.left - paneRect.left,
+        y: r.top  - paneRect.top + pane.scrollTop,
+        w: r.width,
+        h: r.height,
+      });
+    }
+  }
+  if (tiles.length === 0) {
+    alert('Nothing to export — card pane is empty.');
+    return;
+  }
+  const W = paneRect.width;
+  const H = tiles.reduce((m, t) => Math.max(m, t.y + t.h), 0) + 24;
+
+  // Solarized-ish wireframe palette so the export reads as a sketch,
+  // not a screenshot. Dashed outlines, monospace labels.
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+  const parts = [`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">`];
+  parts.push(`<rect width="100%" height="100%" fill="#f4ecd8"/>`);
+  parts.push(`<text x="12" y="18" font-family="JetBrains Mono, monospace" font-size="11" fill="#7a6852">card wireframe · ${esc(slug)} · ${W}×${Math.round(H)}</text>`);
+  for (const t of tiles) {
+    parts.push(`<g><rect x="${t.x.toFixed(1)}" y="${t.y.toFixed(1)}" width="${t.w.toFixed(1)}" height="${t.h.toFixed(1)}" fill="none" stroke="#983327" stroke-width="1.5" stroke-dasharray="6 4" rx="3"/><text x="${(t.x+8).toFixed(1)}" y="${(t.y+18).toFixed(1)}" font-family="JetBrains Mono, monospace" font-size="12" fill="#983327">${esc(t.id)}</text><text x="${(t.x+8).toFixed(1)}" y="${(t.y+32).toFixed(1)}" font-family="JetBrains Mono, monospace" font-size="10" fill="#7a6852">${Math.round(t.w)}×${Math.round(t.h)}</text></g>`);
+  }
+  parts.push('</svg>');
+  const blob = new Blob([parts.join('\n')], { type: 'image/svg+xml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `wireframe-${slug}.svg`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+document.getElementById('exportWireframe').addEventListener('click', exportWireframe);
 
 (async function main() {
   try {

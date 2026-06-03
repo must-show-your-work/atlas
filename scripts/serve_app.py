@@ -67,6 +67,14 @@ def _init_schema(db_path: Path) -> None:
               updated_at TEXT NOT NULL
             );
             CREATE INDEX IF NOT EXISTS notes_by_decl ON notes(decl_id);
+
+            CREATE TABLE IF NOT EXISTS line_flags (
+              decl_id    TEXT NOT NULL,
+              line       INTEGER NOT NULL,
+              created_at TEXT NOT NULL,
+              PRIMARY KEY (decl_id, line)
+            );
+            CREATE INDEX IF NOT EXISTS line_flags_by_decl ON line_flags(decl_id);
         """)
 
 
@@ -134,6 +142,47 @@ def create_app(atlas_root: Path, project_root: Path) -> Flask:
         g.db.execute(
             "DELETE FROM flags WHERE decl_id = ? AND section = ?",
             (decl_id, section),
+        )
+        g.db.commit()
+        return jsonify({"ok": True})
+
+    # -------- API: line flags --------
+    # Flags scoped to a single source line of a decl. Used by the
+    # source-pane click-to-flag UI: shift-click expands to a range
+    # which the client POSTs as individual lines.
+
+    @app.get("/api/line-flags")
+    def list_line_flags():
+        decl = request.args.get("decl")
+        if not decl:
+            abort(400, description="missing decl param")
+        rows = g.db.execute(
+            "SELECT line, created_at FROM line_flags WHERE decl_id = ? ORDER BY line",
+            (decl,),
+        ).fetchall()
+        return jsonify({str(r["line"]): r["created_at"] for r in rows})
+
+    @app.post("/api/line-flags")
+    def add_line_flag():
+        data = request.get_json(silent=True) or {}
+        decl_id = (data.get("decl_id") or "").strip()
+        line = data.get("line")
+        if not decl_id or not isinstance(line, int) or line < 0:
+            abort(400, description="missing/invalid decl_id or line")
+        g.db.execute(
+            "INSERT OR IGNORE INTO line_flags(decl_id, line, created_at) "
+            "VALUES (?, ?, ?)",
+            (decl_id, line, _utc_now()),
+        )
+        g.db.commit()
+        return jsonify({"ok": True})
+
+    @app.delete("/api/line-flags/<path:decl_id>/<int:line>")
+    def remove_line_flag(decl_id: str, line: int):
+        decl_id = unquote(decl_id)
+        g.db.execute(
+            "DELETE FROM line_flags WHERE decl_id = ? AND line = ?",
+            (decl_id, line),
         )
         g.db.commit()
         return jsonify({"ok": True})

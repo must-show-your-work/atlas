@@ -319,14 +319,28 @@ function renderMarkerLeft(m) {
   return '';
 }
 
+// Wrap each line of source in a `bn-line` span tagged with the
+// absolute file line number, so the line-flag UI can address it by
+// click. Highlighting runs per-line so token <span>s stay nested
+// inside their owning line.
+function wrapLines(text, baseLine) {
+  const lines = text.split('\n');
+  return lines.map((line, i) => {
+    const abs = baseLine + i;
+    const inner = highlightLean(line) || '&nbsp;';
+    return `<span class="bn-line" data-line="${abs}">${inner}</span>`;
+  }).join('\n');
+}
+
 function renderSourceWithMarkers(d) {
   const source = d.source || '';
   if (!source) return { hasMarkers: false, html: '' };
+  const baseLine = d.line_start || 1;
   const ms = (window.markersByDecl && window.markersByDecl[d.id]) || null;
   if (!ms || ms.length === 0) {
     return {
       hasMarkers: false,
-      html: `<pre class="bn-source-plain">${highlightLean(source)}</pre>`,
+      html: `<pre class="bn-source-plain">${wrapLines(source, baseLine)}</pre>`,
     };
   }
 
@@ -334,15 +348,20 @@ function renderSourceWithMarkers(d) {
   for (const m of ms) {
     (markersByLine[m.line] ||= []).push(m);
   }
-  const baseLine = d.line_start || 1;
   const lines = source.split('\n');
 
-  const segments = [{ marker: null, codeLines: [] }];
+  // Each segment tracks `firstLine` — the absolute file line where its
+  // codeLines start. The renderer below uses that to give each code
+  // line a `data-line` attribute, so the line-flag UI can address
+  // individual lines even when they're split across marker boundaries.
+  const segments = [{ marker: null, codeLines: [], firstLine: baseLine }];
   for (let i = 0; i < lines.length; i++) {
     const absLine = baseLine + i;
     const here = markersByLine[absLine];
     if (here) {
-      for (const mk of here) segments.push({ marker: mk, codeLines: [] });
+      for (const mk of here) {
+        segments.push({ marker: mk, codeLines: [], firstLine: absLine + 1 });
+      }
       continue;
     }
     segments[segments.length - 1].codeLines.push(lines[i]);
@@ -354,7 +373,7 @@ function renderSourceWithMarkers(d) {
     const left = seg.marker ? renderMarkerLeft(seg.marker) : '';
     const codeText = seg.codeLines.join('\n');
     const right = codeText.trim() === ''
-      ? '' : `<pre class="bn-code">${highlightLean(codeText)}</pre>`;
+      ? '' : `<pre class="bn-code">${wrapLines(codeText, seg.firstLine)}</pre>`;
     return `<div class="bn-seg"><div class="bn-seg-left">${left}</div><div class="bn-seg-right">${right}</div></div>`;
   }).join('');
 
@@ -394,7 +413,7 @@ window.AtlasCard = {
   LEAN_KEYWORDS, highlightLean,
   LEAN_TO_TEX_OPS, ARG_PAT, leanToLatex,
   texToKatexHtml, renderTypeHtml,
-  renderMarkerLeft, renderSourceWithMarkers,
+  renderMarkerLeft, renderSourceWithMarkers, wrapLines,
   renderCommentarySection,
 };
 

@@ -143,6 +143,20 @@ function leanToLatex(raw) {
   s = s.replace(/\{/g, '\\{').replace(/\}/g, '\\}');
 
   const rewrites = [
+    // Point-on-Line membership reads naturally as "P on L" / "P off L"
+    // in Greenberg's prose. Specific rule must precede the generic
+    // `instMembership*.mem → ∈` and the generic `Not (X) → ¬X` so
+    // those don't get a shot first. Covers PointLine, PointLineThrough,
+    // PointRay, PointSegment — anything whose container is a 1-D
+    // geometric subset.
+    //
+    // Sentinels use private-use Unicode codepoints — they have no
+    // letters, so the post-tokenize multi-letter wrapper leaves them
+    // alone. The geom block converts them to `\text{ on } / \text{ off }`.
+    [new RegExp(`\\bNot\\s*\\(\\s*instMembershipPoint\\w+\\.mem (${ARG_PAT}) (${ARG_PAT})\\s*\\)`, 'g'),
+     '$2  $1'],
+    [new RegExp(`\\binstMembershipPoint\\w+\\.mem (${ARG_PAT}) (${ARG_PAT})`, 'g'),
+     '$2  $1'],
     // `autoParam (X) <auto-fn-name>` is Lean's `(x : T := by tac)` desugar
     // — the second arg is a synthetic decl name like `Foo._auto_3` that
     // we never want to display. The auto-fn name may include
@@ -243,6 +257,12 @@ function leanToLatex(raw) {
     // must come before the bare `Distinct → \text{distinct}\,` below.
     [new RegExp(`\\\\mathrm\\{Distinct\\}\\s+(${TOK}|\\\\\\{[^\\\\]*\\\\\\})\\s+\\d+`, 'g'),
      '\\text{distinct}\\,$1'],
+    // Convert the on/off sentinels emitted by the pre-tokenize
+    // Point-membership rules into proper `\text{ … }` macros. Has
+    // to be in the geom block (post-tokenize) so `text` itself
+    // doesn't get re-wrapped in `\mathrm{}`.
+    [//g, '\\text{ on }'],
+    [//g, '\\text{ off }'],
     [/\\mathrm\{Distinct\}/g,   '\\text{distinct}\\,'],
     [/\\mathrm\{Collinear\}/g,  '\\text{collinear}\\,'],
     [/\\mathrm\{Concurrent\}/g, '\\text{concurrent}\\,'],

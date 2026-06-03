@@ -127,14 +127,11 @@ html, body {
   grid-template-columns: repeat(12, 1fr);
   grid-template-rows: auto auto auto auto auto auto auto;
   grid-template-areas:
-    "head     head     head     head     head     head     head    head    head    head    head    head"
-    "title    title    title    title    title    title    figure  figure  figure  figure  figure  figure"
-    "preface  preface  preface  preface  preface  preface  figure  figure  figure  figure  figure  figure"
-    "stmt     stmt     stmt     stmt     stmt     stmt     figure  figure  figure  figure  figure  figure"
-    "ednotes  ednotes  ednotes  ednotes  ednotes  ednotes  figure  figure  figure  figure  figure  figure"
-    "proof    proof    proof    proof    proof    proof    proof   proof   proof   proof   proof   proof"
-    "refs     refs     refs     refs     refs     refs     refs    notes   notes   notes   notes   notes"
-    "footer   footer   footer   footer   footer   footer   footer  footer  footer  footer  footer  footer";
+    "head  head  head  head  head  head  head    head    head    head    head    head"
+    "lhs   lhs   lhs   lhs   lhs   lhs   figure  figure  figure  figure  figure  figure"
+    "proof proof proof proof proof proof proof   proof   proof   proof   proof   proof"
+    "refs  refs  refs  refs  refs  refs  refs    notes   notes   notes   notes   notes"
+    "footer footer footer footer footer footer footer footer footer footer footer footer";
   column-gap: 24px;
   row-gap: 16px;
   align-content: start;
@@ -180,18 +177,24 @@ html, body {
 
 /* Each card-section attaches itself to a grid area via data-section.
    Hidden empty sections take no space; populated ones span their area. */
-.card-section[data-section="statement"]   { grid-area: stmt; }
+/* Upper-left column: title + preface + statement + editorial notes
+   stack inside a flex column. The flex container takes the full
+   height of the row (whatever the figure tile is), and content sits
+   at the top — any leftover space falls below ednotes instead of
+   spreading evenly across rows. */
+.lhs-stack {
+  grid-area: lhs;
+  display: flex; flex-direction: column; gap: 14px;
+  align-self: stretch;
+}
 .card-section[data-section="figure"]      { grid-area: figure;
   display: flex; align-items: flex-start; flex-direction: column;
 }
-.card-section[data-section="preface"]     { grid-area: preface; }
-.card-section[data-section="ednotes"]     { grid-area: ednotes; }
 .card-section[data-section="proof"]       { grid-area: proof; }
 .card-section[data-section="references"]  { grid-area: refs; }
 .card-section[data-section="notes"]       { grid-area: notes; }
-/* Title cluster lives in the title area: long-form name plus the
-   inline page/alias chips, no duplicate h1. */
-.title-block { grid-area: title; }
+/* Title cluster sits at the top of the lhs stack (no grid area —
+   it's a flex item inside .lhs-stack). */
 .title-block .cb-name {
   font: 500 28px/1.18 "Fraunces", Georgia, serif;
   letter-spacing: -0.012em; color: var(--ink); margin: 0 0 4px 0;
@@ -932,10 +935,15 @@ function computeMarkerLines(source, baseLine) {
 
 // Render a 3-col proof view from the source + markers. Left column =
 // author quotes (the `quoting` markers). Middle = lean source, line by
-// line — with marker-syntax lines blanked so they don't duplicate
-// what's already shown in the LHS/RHS. Right column = editor
-// commentary (`comment`, `idea`, `intuition`, etc.) plus future
-// inline figure deltas from `auxiliary { … }` blocks (TODO #67).
+// line. Right column = editor commentary (`comment`, `idea`,
+// `intuition`, etc.) plus future inline figure deltas from
+// `auxiliary { … }` blocks (TODO #67).
+//
+// Filtering strategy: lines that are part of marker syntax disappear
+// entirely from the rendered proof. Each marker slides to the next
+// non-elided source line so it stays anchored to the proof step it
+// documents. Runs of blank lines that bracket an elided region
+// collapse to a single blank.
 function renderProofTriColumn(d) {
   const source = d.source || '';
   if (!source) {
@@ -944,26 +952,50 @@ function renderProofTriColumn(d) {
   const baseLine = d.line_start || 1;
   const lines = source.split('\n');
   const ms = (window.markersByDecl && window.markersByDecl[d.id]) || [];
+  const elided = computeMarkerLines(source, baseLine);
+  const lastAbs = baseLine + lines.length - 1;
+
+  // Slide each marker forward to the next non-elided line. Falls back
+  // to the line itself if the search runs off the end of the source.
+  const slideForward = (line) => {
+    let n = line;
+    while (n <= lastAbs && elided.has(n)) n++;
+    return n > lastAbs ? line : n;
+  };
   const leftByLine = {};
   const rightByLine = {};
   for (const m of ms) {
+    const anchor = slideForward(m.line);
     if (m._kind === 'quoting' || m._kind === 'page_break') {
-      (leftByLine[m.line] ||= []).push(m);
+      (leftByLine[anchor] ||= []).push(m);
     } else {
-      (rightByLine[m.line] ||= []).push(m);
+      (rightByLine[anchor] ||= []).push(m);
     }
   }
-  const elided = computeMarkerLines(source, baseLine);
-  const rows = lines.map((ln, i) => {
+
+  // Drop elided rows entirely, then compress consecutive blank rows.
+  // The compress pass kicks in after elision because removing a
+  // marker line often leaves blanks on both sides that collapse.
+  const kept = [];
+  let prevBlank = false;
+  for (let i = 0; i < lines.length; i++) {
     const abs = baseLine + i;
+    if (elided.has(abs)) { prevBlank = false; continue; }
+    const isBlank = lines[i].trim() === '';
+    if (isBlank && prevBlank) continue;
+    kept.push({ abs, line: lines[i], isBlank });
+    prevBlank = isBlank;
+  }
+  // Trim leading/trailing blanks in the kept slice.
+  while (kept.length && kept[0].isBlank) kept.shift();
+  while (kept.length && kept[kept.length-1].isBlank) kept.pop();
+
+  const rows = kept.map(({ abs, line }) => {
     const left  = (leftByLine[abs]  || []).map(A.renderMarkerLeft).join('');
     const right = (rightByLine[abs] || []).map(A.renderMarkerLeft).join('');
-    const isElided = elided.has(abs);
-    const codeInner = isElided
-      ? ''   // marker-syntax line — the marker block fills LHS/RHS instead
-      : (A.highlightLean(ln) || '&nbsp;');
-    const codeLine = `<span class="bn-line${isElided ? ' bn-line-elided' : ''}" data-line="${abs}">${codeInner}</span>`;
-    return `<div class="proof-row${isElided ? ' proof-row-marker' : ''}">
+    const codeInner = A.highlightLean(line) || '&nbsp;';
+    const codeLine = `<span class="bn-line" data-line="${abs}">${codeInner}</span>`;
+    return `<div class="proof-row">
       <div class="proof-col-quoting">${left}</div>
       <div class="proof-col-source"><pre class="bn-code">${codeLine}</pre></div>
       <div class="proof-col-commentary">${right}</div>
@@ -1019,11 +1051,12 @@ function renderCard(d) {
       ${d.atlas_number ? `<span class="card-head-sep">·</span><span class="card-head-number">${A.escapeHtml(d.atlas_number)}</span>` : ''}
       ${d.has_sorry ? '<span class="card-head-sorry">sorry</span>' : ''}
     </header>
-    ${titleBlock}
-
-    ${flaggableSection('preface',   'preface',   prefaceBody)}
-    ${flaggableSection('statement', 'statement', statementBody)}
-    ${flaggableSection('ednotes',   'ed. notes', ednotesBody)}
+    <div class="lhs-stack">
+      ${titleBlock}
+      ${flaggableSection('preface',   'preface',   prefaceBody)}
+      ${flaggableSection('statement', 'statement', statementBody)}
+      ${flaggableSection('ednotes',   'ed. notes', ednotesBody)}
+    </div>
     ${flaggableSection('figure',    'figure',    figureBody)}
     ${flaggableSection('proof',     'proof',     renderProofTriColumn(d))}
     ${renderRefsSection(d)}

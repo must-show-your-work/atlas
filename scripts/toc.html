@@ -22,7 +22,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,0..100,0..1;1,9..144,300..900,0..100,0..1&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./vendor/katex/katex.min.css?v=local-10">
 <script src="./vendor/katex/katex.min.js?v=local-10"></script>
-<script src="./card.js?v=20"></script>
+<script src="./card.js?v=21"></script>
 
 <style>
 :root {
@@ -501,7 +501,10 @@ body.mode-production .bn-line:hover { background: transparent; }
 .bn-marker { display: flex; align-items: baseline; gap: 0.45em; }
 .bn-marker-quoting .bn-text { font-style: italic; color: var(--ink-soft); }
 .bn-marker-comment { color: var(--ink-muted); }
-.bn-marker-comment .bn-text { color: var(--ink-muted); font-size: 0.86em; }
+/* Match the parent column's `font-size: 13px` so quoting and comment
+   text run at the same scale — `0.86em` made comments visibly
+   smaller than quotes on the LHS. */
+.bn-marker-comment .bn-text { color: var(--ink-muted); }
 .bn-marker-pagebreak {
   display: flex; align-items: center; gap: 0.6em;
   color: var(--ink-ghost); font-style: italic; font-size: 11px;

@@ -627,6 +627,20 @@ function renderMarkerLeft(m) {
       <span class="bn-chip-slot"><span class="bn-chip bn-chip-${m._kind}">${m._kind}</span></span><span class="bn-text">${escapeHtml(m.text)}</span>
     </div>`;
   }
+  if (m._kind === 'aux-figure') {
+    // Inline figure delta from an `auxillary { … }` block: a small
+    // SVG embedded next to the proof step that introduces it. Sits
+    // in the RHS commentary column at the slid-forward anchor line.
+    const desc = m.description
+      ? `<div class="aux-figure-desc">${escapeHtml(m.description)}</div>` : '';
+    return `<div class="bn-marker bn-marker-aux-figure" ${lineAttr}>
+      <span class="bn-chip-slot"><span class="bn-chip bn-chip-aux-figure">fig</span></span>
+      <div class="bn-text aux-figure-body">
+        <div class="aux-figure-svg">${m.svg || ''}</div>
+        ${desc}
+      </div>
+    </div>`;
+  }
   return '';
 }
 

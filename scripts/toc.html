@@ -22,7 +22,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,0..100,0..1;1,9..144,300..900,0..100,0..1&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./vendor/katex/katex.min.css?v=local-10">
 <script src="./vendor/katex/katex.min.js?v=local-10"></script>
-<script src="./card.js?v=28"></script>
+<script src="./card.js?v=29"></script>
 
 <style>
 :root {
@@ -449,6 +449,24 @@ body.mode-production .bn-line:hover { background: transparent; }
 .proof-col-commentary {
   background: var(--paper);
   border-left: 1px solid var(--paper-deep);
+  /* Anchor for absolute-positioned aux figures (below). */
+  position: relative;
+}
+/* When a commentary cell spans multiple rows (because it carries an
+   aux figure — see `placeMarkers` in toc.html), pull the figure out
+   of normal flow so the cell's content height is 0 and the cell takes
+   its span-derived height purely from the source-column rows below
+   the anchor. The figure then floats over those rows, capped at
+   `max-height: 100%` of the cell, only growing the row beneath when
+   the SVG is genuinely taller than the available empty space. */
+.proof-col-commentary > .bn-marker-aux-figure {
+  position: absolute;
+  top: 0; left: 10px; right: 10px;
+  max-height: 100%;
+  overflow: hidden;
+}
+.proof-col-commentary > .bn-marker-aux-figure .aux-figure-svg svg {
+  max-height: 100%;
 }
 .proof-col-source {
   background: var(--paper);
@@ -1264,23 +1282,39 @@ function renderProofTriColumn(d) {
          + `</div>`;
   });
 
-  // Markers anchor to a single row (their slid-forward source line).
-  // No multi-row spans: when the marker text is taller than the
-  // source row's content, the row inflates locally instead of
-  // stretching neighboring rows. Rows without their own marker stay
-  // tight to source-line height.
+  // Markers anchor to a single row (their slid-forward source line)
+  // and rely on local inflation. Aux figures, however, span from
+  // their anchor down to the next right-column anchor (or the last
+  // row), so the figure fills any empty right-column space below its
+  // attachment line instead of inflating that single row. The
+  // line-attachment story stays legible because the column-divider
+  // border still glows beside the anchor source line.
   const rowOfAbs = new Map(kept.map(({ abs }, i) => [abs, i + 1]));
-  function placeMarkers(byLine, colClass) {
+  const lastRowPlusOne = kept.length + 1;
+  function placeMarkers(byLine, colClass, spanAuxToNext) {
     const anchors = Object.keys(byLine).map(Number).sort((a, b) => a - b);
-    return anchors.map(anchor => {
+    return anchors.map((anchor, i) => {
       const startRow = rowOfAbs.get(anchor);
       if (!startRow) return '';
-      const inner = byLine[anchor].map(A.renderMarkerLeft).join('');
-      return `<div class="${colClass}" style="grid-row:${startRow}">${inner}</div>`;
+      const items = byLine[anchor];
+      // Span only when (1) we're on a column that opted in and (2)
+      // this anchor's payload contains an aux figure (text markers
+      // alone should anchor tight to their source line).
+      const hasAuxFigure = items.some(it => it._kind === 'aux-figure');
+      let style = `grid-row:${startRow}`;
+      if (spanAuxToNext && hasAuxFigure) {
+        const next = anchors[i + 1];
+        const endRow = (next != null && rowOfAbs.get(next)) || lastRowPlusOne;
+        if (endRow > startRow + 1) {
+          style = `grid-row:${startRow} / ${endRow}`;
+        }
+      }
+      const inner = items.map(A.renderMarkerLeft).join('');
+      return `<div class="${colClass}" style="${style}">${inner}</div>`;
     }).join('');
   }
-  const leftCells  = placeMarkers(leftByLine,  'proof-col-quoting');
-  const rightCells = placeMarkers(rightByLine, 'proof-col-commentary');
+  const leftCells  = placeMarkers(leftByLine,  'proof-col-quoting', false);
+  const rightCells = placeMarkers(rightByLine, 'proof-col-commentary', true);
 
   return `<div class="proof-grid">${sourceCells.join('')}${leftCells}${rightCells}</div>`;
 }

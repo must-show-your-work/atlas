@@ -585,6 +585,17 @@ function renderTypeHtml(rawType, opts = {}) {
   return texToKatexHtml(tex, { ...opts, displayMode: true });
 }
 
+// AST-path render: take a finished LaTeX string from LeanTeX
+// (already represents the full type) and just hand it to KaTeX. No
+// regex pipeline, no binder restructuring, no paren stripping — all
+// of that lives in LeanTeX's rules on the Lean side. Used in
+// `?compare=1` mode alongside `renderTypeHtml` so the two paths can
+// be visually checked decl-by-decl.
+function renderTypeHtmlFromTex(latexString, opts = {}) {
+  if (!latexString) return '';
+  return texToKatexHtml(latexString, { ...opts, displayMode: true });
+}
+
 // ---------- Markers + side-by-side source ----------
 
 function renderMarkerLeft(m) {
@@ -737,7 +748,7 @@ window.AtlasCard = {
   escapeHtml, escapeMath,
   LEAN_KEYWORDS, highlightLean,
   LEAN_TO_TEX_OPS, ARG_PAT, leanToLatex,
-  texToKatexHtml, renderTypeHtml,
+  texToKatexHtml, renderTypeHtml, renderTypeHtmlFromTex,
   renderMarkerLeft, renderSourceWithMarkers, wrapLines,
   renderCommentarySection,
 };

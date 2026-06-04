@@ -99,6 +99,10 @@ body::after {
     radial-gradient(ellipse at 20% 0%, rgba(176, 130, 41, 0.10), transparent 55%),
     radial-gradient(ellipse at 100% 100%, rgba(152, 51, 39, 0.08), transparent 60%);
 }
+/* The warm-tone grain + radial gradients above are calibrated for the
+   cream-paper palette and read as muddy washes against the dark
+   palette. Drop them in dark mode; the solid background is enough. */
+body.dark-mode::before, body.dark-mode::after { display: none; }
 
 /* ---------- Layout shell ---------- */
 .shell {
@@ -1732,6 +1736,11 @@ function applyMode(mode) {
   document.body.classList.toggle('dark-mode', mode === 'dark');
   const btn = document.getElementById('modeToggle');
   if (btn) btn.textContent = mode === 'dark' ? '◑ light' : '◐ dark';
+  // Re-skin cytoscape nodes/edges from the (now-active) CSS variables
+  // so the canvas inverts in lockstep with the editorial cards.
+  if (window.cy && window.buildCytoscapeStyle) {
+    window.cy.style().fromJson(window.buildCytoscapeStyle()).update();
+  }
 }
 function loadMode() {
   try { return localStorage.getItem(MODE_KEY) || 'light'; }
@@ -2687,13 +2696,17 @@ async function main() {
     }
   }
 
-  // ---- Cytoscape ----
-  const cy = cytoscape({
-    container: document.getElementById('cy'),
-    elements: { nodes, edges },
-    minZoom: 0.01, maxZoom: 4,
-    wheelSensitivity: 0.2,
-    style: [
+  // Build the cytoscape stylesheet from the active CSS variables so
+  // node/edge colors track dark mode. Re-applied via cy.style() when
+  // the body class changes (see `applyMode`).
+  function readCssVar(name) {
+    return getComputedStyle(document.body).getPropertyValue(name).trim();
+  }
+  function buildCytoscapeStyle() {
+    const paper  = readCssVar('--paper');
+    const ink    = readCssVar('--ink');
+    const accent = readCssVar('--accent');
+    return [
       {
         // The cytoscape node is an invisible rectangle that holds the
         // HTML card (added via the `nodeHtmlLabel` plugin below). The
@@ -2702,56 +2715,55 @@ async function main() {
         style: {
           'shape': 'round-rectangle',
           'background-opacity': 0,
-          'background-color': '#f4ecd8',
+          'background-color': paper,
           'border-width': 0,
-          'label': '',                       // ← suppress native label
-          'width': 640,                      // ← 3×5 index card, landscape (oversized)
-          'height': 380,
+          'label': '',
           'padding': '0px',
         },
       },
       {
         selector: 'node:selected',
-        style: {
-          'background-opacity': 0.18,
-          'background-color': '#983327',
-        },
+        style: { 'background-opacity': 0.18, 'background-color': accent },
       },
       {
         selector: 'edge',
         style: {
           'width': 0.8,
-          'line-color': 'rgba(28, 20, 16, 0.32)',
+          'line-color': ink, 'line-opacity': 0.32,
           'target-arrow-shape': 'triangle-backcurve',
-          'target-arrow-color': 'rgba(28, 20, 16, 0.5)',
+          'target-arrow-color': ink,
           'curve-style': 'bezier',
           'arrow-scale': 0.7,
         },
       },
-      {
-        selector: '.dim',
-        style: { 'opacity': 0.08 },
-      },
-      {
-        selector: 'node.related',
-        style: {
-          'border-color': '#983327',
-          'border-width': 2,
-        },
-      },
+      { selector: '.dim', style: { 'opacity': 0.08 } },
+      { selector: 'node.related', style: { 'border-color': accent, 'border-width': 2 } },
       {
         selector: 'edge.related',
         style: {
-          'line-color': '#983327',
-          'target-arrow-color': '#983327',
+          'line-color': accent,
+          'target-arrow-color': accent,
           'width': 1.3,
           'opacity': 0.9,
           'z-index': 99,
         },
       },
-    ],
+    ];
+  }
+
+  // ---- Cytoscape ----
+  const cy = cytoscape({
+    container: document.getElementById('cy'),
+    elements: { nodes, edges },
+    minZoom: 0.01, maxZoom: 4,
+    wheelSensitivity: 0.2,
+    style: buildCytoscapeStyle(),
     layout: elkOpts(),
   });
+  // Expose so applyMode can re-skin nodes/edges from outside the
+  // init function when dark mode flips.
+  window.cy = cy;
+  window.buildCytoscapeStyle = buildCytoscapeStyle;
 
   // Precompute degree so mapData(degree, …) in the stylesheet has data to bind.
   cy.nodes().forEach(n => n.data('degree', n.degree()));
@@ -2780,11 +2792,10 @@ async function main() {
     // Bucket into 4 size classes so the card CSS can scale fonts/
     // padding by bucket (continuous CSS resize would require container
     // queries, which work but make per-element rules messier).
-    const bucket =
-      norm > 0.95 ? 'size-poster' :
-      norm > 0.75 ? 'size-large'  :
-      norm > 0.35 ? 'size-medium' : 'size-small';
-    n.data('sizeBucket', bucket);
+    // Sizing is uniform for now (see CARD_W / CARD_H below). The
+    // `sizeBucket` data field is kept so the CSS classes (and any
+    // downstream consumers) still resolve to one set of rules.
+    n.data('sizeBucket', 'size-medium');
   });
   // Drive the actual cytoscape node geometry. Manual size (set by the
   // resize handle, persisted to localStorage per-node) takes precedence;
@@ -2805,14 +2816,16 @@ async function main() {
   // card resolves to its content's natural size (which leaves the
   // cytoscape node bounds peeking through, showing as a red rectangle
   // when the node is selected).
+  // Uniform card size: every node renders the full toc editorial card
+  // at a fixed paper-sized canvas, regardless of pagerank. Pagerank-
+  // based scaling is on the roadmap but disabled while we drive the
+  // card layout itself. Manual resize-handle overrides still apply.
+  const CARD_W = 1200;
+  const CARD_H = 1700;
   cy.nodes().forEach(n => {
     const stored = loadNodeSize(n.id());
-    const norm = n.data('pageRankNorm') ?? 0.5;
-    // Priority: manual (resize handle) > uniform (foundation tier) >
-    // pagerank default.
-    const uw = n.data('uniformW'), uh = n.data('uniformH');
-    const w = stored?.w ?? uw ?? mapDataNorm(norm, 525, 1485);
-    const h = stored?.h ?? uh ?? mapDataNorm(norm, 740, 2100);
+    const w = stored?.w ?? CARD_W;
+    const h = stored?.h ?? CARD_H;
     if (stored) {
       n.data('manualW', stored.w);
       n.data('manualH', stored.h);

@@ -1638,6 +1638,7 @@ body::after {
       <span class="roman">layout</span><span>elk</span>
     </div>
     <button id="toggle-controls" class="icon-btn" type="button" aria-expanded="false">parameters</button>
+    <button id="modeToggle" class="icon-btn" type="button" title="toggle light/dark (Shift+D)">◐ dark</button>
     <button id="reset" class="icon-btn" type="button" title="re-fit view">re-fit</button>
     <button id="capture-sizes" class="icon-btn" type="button"
             title="copy current per-card sizes to clipboard">capture sizes</button>
@@ -1722,6 +1723,40 @@ body::after {
 // viewer uses; renderNodeCard wraps it in the node-card sizing
 // container so cytoscape-node-html-label can place it.
 const A = window.AtlasCard;
+
+// Dark mode — shares the `atlas.mode` localStorage key with the toc
+// viewer so the two surfaces stay in sync within a browser. Toggle
+// via the header button or Shift+D.
+const MODE_KEY = 'atlas.mode';
+function applyMode(mode) {
+  document.body.classList.toggle('dark-mode', mode === 'dark');
+  const btn = document.getElementById('modeToggle');
+  if (btn) btn.textContent = mode === 'dark' ? '◑ light' : '◐ dark';
+}
+function loadMode() {
+  try { return localStorage.getItem(MODE_KEY) || 'light'; }
+  catch { return 'light'; }
+}
+function toggleMode() {
+  const next = loadMode() === 'dark' ? 'light' : 'dark';
+  try { localStorage.setItem(MODE_KEY, next); } catch {}
+  applyMode(next);
+}
+// Apply persisted mode before first paint — the body class needs to
+// be set before cytoscape lays out so the dark palette propagates
+// through CSS vars to node-html-label content.
+applyMode(loadMode());
+window.addEventListener('DOMContentLoaded', () => {
+  const btn = document.getElementById('modeToggle');
+  if (btn) btn.addEventListener('click', toggleMode);
+});
+window.addEventListener('keydown', ev => {
+  if (ev.shiftKey && (ev.key === 'D' || ev.key === 'd') &&
+      !/^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName)) {
+    ev.preventDefault();
+    toggleMode();
+  }
+});
 
 // ---------- Helpers ----------
 function escapeHtml(s) {

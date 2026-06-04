@@ -2846,11 +2846,15 @@ async function main() {
   // cytoscape node bounds peeking through, showing as a red rectangle
   // when the node is selected).
   // Uniform card size: every node renders the full toc editorial card
-  // at a fixed paper-sized canvas, regardless of pagerank. Pagerank-
-  // based scaling is on the roadmap but disabled while we drive the
-  // card layout itself. Manual resize-handle overrides still apply.
-  const CARD_W = 1200;
-  const CARD_H = 1700;
+  // at a fixed canvas sized for the right ~2/3 of a 1440p display
+  // (~2560 px wide). The auto-size pass below grows height per node to
+  // fit the rendered content; width stays at CARD_W since the
+  // editorial card's 12-column grid was tuned for this width.
+  // Pagerank-based scaling is on the roadmap but disabled while we
+  // drive the card layout itself. Manual resize-handle overrides still
+  // apply.
+  const CARD_W = 1700;
+  const CARD_H = 1800;
   cy.nodes().forEach(n => {
     const stored = loadNodeSize(n.id());
     const w = stored?.w ?? CARD_W;

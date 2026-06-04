@@ -137,7 +137,10 @@ body.dark-mode .node-card.kind-opaque  { background-color: var(--paper-soft); }
 .shell {
   position: relative; z-index: 1;
   display: grid;
-  grid-template-rows: auto auto auto 1fr;
+  /* masthead · toolbar · main. The params drawer that used to sit
+     between toolbar and main was removed along with the parameters
+     button; the row template tracks current children exactly. */
+  grid-template-rows: auto auto 1fr;
   height: 100vh;
 }
 

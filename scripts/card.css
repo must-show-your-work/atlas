@@ -542,12 +542,16 @@ body.dark-mode .bn-chip-detail     { color: #a3a8d8; }
 .card-commentary .cb-body { font-size: 14.5px; line-height: 1.5; color: var(--ink-soft); }
 .cb-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
 .cb-name { font-weight: 500; color: var(--ink); }
-.cb-page { font: 11px/1 "JetBrains Mono", monospace; color: var(--teal); letter-spacing: 0.04em; }
-.cb-aliases, .cb-tags { font-size: 12px; color: var(--ink-muted); margin: 4px 0; }
+/* Title range — single serif family throughout. The page reference,
+   aliases, and tags used to alternate Fraunces / JetBrains Mono;
+   unified to Fraunces so the title cluster reads as one typographic
+   voice. */
+.cb-page { font: 12px/1 "Fraunces", Georgia, serif; color: var(--teal); letter-spacing: 0.02em; font-style: italic; }
+.cb-aliases, .cb-tags { font-family: "Fraunces", Georgia, serif; font-size: 13px; color: var(--ink-muted); margin: 4px 0; }
 .cb-alias-chip, .cb-tag-chip {
   display: inline-block; padding: 1px 7px; margin: 0 2px;
   background: rgba(184, 166, 133, 0.25); border-radius: 2px;
-  font-family: "JetBrains Mono", monospace; font-size: 11px;
+  font-family: "Fraunces", Georgia, serif; font-size: 12px;
 }
 .cb-preface { font-style: italic; margin: 8px 0; padding-left: 12px; border-left: 2px solid var(--paper-deep); }
 .cb-notes { font-size: 13px; color: var(--ink-muted); margin-top: 6px; }

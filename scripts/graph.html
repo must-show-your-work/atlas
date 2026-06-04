@@ -45,8 +45,8 @@
 <!-- Shared card stylesheet + renderer (single source of truth across the
      toc and graph viewers). card.js defines `window.AtlasCard` with
      `renderCard`, `renderTypeHtmlFromTex`, the proof-grid helpers, etc. -->
-<link rel="stylesheet" href="./card.css?v=1">
-<script src="./card.js?v=36"></script>
+<link rel="stylesheet" href="./card.css?v=2">
+<script src="./card.js?v=37"></script>
 
 <!-- HTML-inside-node plugin: lets us put a real DOM card (with KaTeX) at
      each node, scaled by Cytoscape's pan/zoom. -->
@@ -238,27 +238,6 @@ body.dark-mode .node-card.kind-opaque  { background-color: var(--paper-soft); }
     var(--paper-soft);
 }
 
-/* Read-only engine badge (sits where the engine switcher used to). */
-.engine-badge {
-  display: inline-flex; align-items: baseline; gap: 10px;
-  padding: 9px 16px 8px;
-  border: 1px solid var(--ink);
-  background: var(--paper);
-  font-family: var(--display);
-  font-variation-settings: "opsz" 14, "wght" 500;
-  font-size: 13px;
-  color: var(--ink);
-  letter-spacing: 0.02em;
-  user-select: none;
-}
-.engine-badge .roman {
-  font-variation-settings: "opsz" 14, "wght" 600;
-  font-style: italic;
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  opacity: 0.7;
-}
-
 .field {
   position: relative;
   display: flex; align-items: baseline; gap: 8px;
@@ -358,130 +337,6 @@ body.dark-mode .node-card.kind-opaque  { background-color: var(--paper-soft); }
 .icon-btn:hover { background: var(--paper-deep); border-color: var(--ink-muted); }
 .icon-btn[aria-expanded="true"] {
   background: var(--ink); color: var(--paper); border-color: var(--ink);
-}
-
-/* ---------- Layout-params drawer ---------- */
-.params {
-  background:
-    linear-gradient(to bottom, rgba(28, 20, 16, 0.04), transparent 10px),
-    var(--paper-soft);
-  border-bottom: 1px solid var(--rule);
-  overflow: hidden;
-  max-height: 280px;
-  transition: max-height 320ms cubic-bezier(0.4, 0, 0.2, 1),
-              padding 320ms cubic-bezier(0.4, 0, 0.2, 1);
-  padding: 18px 36px 22px;
-}
-.params.hidden { max-height: 0; padding-top: 0; padding-bottom: 0; }
-
-.params-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 36px;
-  align-items: start;
-}
-.params-section h3 {
-  margin: 0 0 12px;
-  font-family: var(--display);
-  font-variation-settings: "opsz" 144, "wght" 600;
-  font-style: italic;
-  font-size: 13px;
-  color: var(--ink);
-  text-transform: lowercase;
-  letter-spacing: 0.02em;
-  display: flex; align-items: baseline; gap: 8px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--rule);
-}
-.params-section h3 .num {
-  font-style: normal;
-  font-variation-settings: "opsz" 14, "wght" 600;
-  color: var(--accent);
-  font-size: 11px;
-  letter-spacing: 0.18em;
-}
-.params-section h3 .annotation {
-  font-variation-settings: "opsz" 14, "wght" 400;
-  font-style: italic;
-  font-size: 10px;
-  color: var(--ink-muted);
-  margin-left: auto;
-  text-transform: none;
-  letter-spacing: 0;
-}
-.param-row {
-  display: grid;
-  grid-template-columns: 96px 1fr;
-  gap: 12px;
-  align-items: baseline;
-  padding: 4px 0;
-}
-.param-row label {
-  font-family: var(--display);
-  font-size: 11px;
-  color: var(--ink-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  font-variation-settings: "opsz" 14, "wght" 500;
-}
-.param-row input,
-.param-row select {
-  appearance: none; -webkit-appearance: none;
-  background: transparent;
-  border: 0;
-  border-bottom: 1px dotted var(--ink-ghost);
-  padding: 2px 0 4px;
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--ink);
-  width: 100%;
-}
-.param-row input:focus,
-.param-row select:focus {
-  outline: none;
-  border-bottom: 1px solid var(--accent);
-}
-.param-row select {
-  cursor: pointer;
-  background-image:
-    linear-gradient(45deg, transparent 50%, var(--ink-muted) 50%),
-    linear-gradient(135deg, var(--ink-muted) 50%, transparent 50%);
-  background-position: calc(100% - 8px) calc(50% + 1px), calc(100% - 4px) calc(50% + 1px);
-  background-size: 4px 4px;
-  background-repeat: no-repeat;
-  padding-right: 18px;
-}
-
-.apply-col {
-  display: flex; flex-direction: column; gap: 6px;
-  align-items: flex-end; justify-content: flex-end;
-  align-self: stretch;
-  padding-top: 30px;
-}
-#layout-apply {
-  appearance: none;
-  background: var(--accent);
-  color: var(--paper);
-  border: 0;
-  padding: 12px 22px;
-  font-family: var(--display);
-  font-variation-settings: "opsz" 14, "wght" 600;
-  font-size: 13px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  cursor: pointer;
-  transition: background 200ms ease, transform 100ms ease, box-shadow 200ms ease;
-  box-shadow: 0 1px 0 rgba(0,0,0,0.1), 0 10px 18px -12px rgba(152, 51, 39, 0.55);
-}
-#layout-apply:hover { background: #7a2820; }
-#layout-apply:active { transform: translateY(1px); }
-.apply-hint {
-  font-family: var(--display);
-  font-variation-settings: "opsz" 14, "wght" 400;
-  font-style: italic;
-  font-size: 10px;
-  color: var(--ink-muted);
-  letter-spacing: 0.03em;
 }
 
 /* ---------- Main pane ---------- */
@@ -785,57 +640,12 @@ body.dark-mode .node-card.kind-opaque  { background-color: var(--paper-soft); }
   border-radius: 3px;
   border: 1px solid rgba(101, 123, 131, 0.2);
 }
-.cb-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 1em;
-  flex-wrap: wrap;
-}
-.cb-name {
-  font-family: 'EB Garamond', 'Iowan Old Style', Georgia, serif;
-  font-size: 1.15em;
-  font-weight: 600;
-  color: #073642;
-}
-.cb-page {
-  font-family: 'EB Garamond', 'Iowan Old Style', Georgia, serif;
-  font-size: 0.85em;
-  color: #586e75;
-  white-space: nowrap;
-}
-.cb-aliases {
-  font-family: 'EB Garamond', 'Iowan Old Style', Georgia, serif;
-  font-size: 0.85em;
-  color: #586e75;
-}
-.cb-alias-chip {
-  display: inline-block;
-  padding: 0.05em 0.45em;
-  margin-right: 0.2em;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  font-size: 0.85em;
-  background: rgba(181, 137, 0, 0.12);
-  border: 1px solid rgba(181, 137, 0, 0.3);
-  border-radius: 2px;
-  color: #586e75;
-}
-.cb-tags { font-size: 0.82em; }
-.cb-tag-chip {
-  display: inline-block;
-  padding: 0.05em 0.45em;
-  margin-right: 0.2em;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  font-size: 0.85em;
-  background: rgba(38, 139, 210, 0.1);
-  border: 1px solid rgba(38, 139, 210, 0.25);
-  border-radius: 2px;
-  color: #586e75;
-}
-/* `.cb-preface` / `.cb-notes` / `.cb-notes-label` are now styled
-   centrally in card.css (var-based, dark-mode-aware). Removed the
-   graph-local overrides that hardcoded cream-paper backgrounds —
-   they read as a "weird light gray" against the dark canvas. */
+/* `.cb-head`, `.cb-name`, `.cb-page`, `.cb-aliases`, `.cb-alias-chip`,
+   `.cb-tags`, `.cb-tag-chip`, `.cb-preface`, `.cb-notes`, `.cb-notes-label`
+   are styled centrally in card.css — Fraunces for the title range,
+   JetBrains Mono for the chip metadata, var-based colors for dark
+   mode. Local graph.html overrides were dropped so the two viewers
+   share one typography. */
 
 /* ---------- Book ⟷ Proof side-by-side (`quoting`/`comment`/`page break`) ---------- */
 .bn-grid {
@@ -1069,7 +879,6 @@ body.dark-mode .node-card.kind-opaque  { background-color: var(--paper-soft); }
 }
 .masthead { animation: rise 600ms ease-out both; }
 .toolbar  { animation: rise 600ms ease-out 80ms both; }
-.params   { animation: rise 600ms ease-out 160ms both; }
 .main     { animation: rise 600ms ease-out 240ms both; }
 
 /* Subtle "loading…" placeholder shown until graph.json arrives */
@@ -1092,51 +901,6 @@ body.dark-mode .node-card.kind-opaque  { background-color: var(--paper-soft); }
 }
 
 /* ---------- Atlas-kind filter chips ---------- */
-/* Compact pillbox in the toolbar. Each chip toggles whether nodes with
-   that `atlas_kind` are dimmed. `ALL` clears the filter. The active
-   chip inverts to the dark-ink fill that matches the publication's
-   section selector aesthetic. */
-.atlas-chips {
-  display: inline-flex; flex-wrap: wrap;
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid var(--rule);
-  background: var(--paper);
-  align-items: center;
-}
-.atlas-chips .atlas-chip {
-  appearance: none;
-  background: transparent;
-  border: 1px solid transparent;
-  padding: 5px 9px;
-  font-family: var(--display);
-  font-variation-settings: "opsz" 14, "wght" 500;
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  color: var(--ink-soft);
-  cursor: pointer;
-  text-transform: uppercase;
-  white-space: nowrap;
-  transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
-}
-.atlas-chips .atlas-chip:hover {
-  background: var(--paper-deep);
-  color: var(--ink);
-}
-.atlas-chips .atlas-chip.active {
-  background: var(--ink);
-  color: var(--paper);
-  border-color: var(--ink);
-}
-.atlas-chips .atlas-chip .sigil {
-  color: var(--accent);
-  margin-right: 3px;
-  font-style: normal;
-}
-.atlas-chips .atlas-chip.active .sigil {
-  color: var(--paper-soft);
-}
-
 /* ---------- Inspector: atlas marker block ---------- */
 /* Sits above the FQN/title block when the node carries `@[atlas …]`.
    Reads as a small editorial section header — kind chip + number on
@@ -1601,7 +1365,6 @@ body.dark-mode .node-card.kind-opaque  { background-color: var(--paper-soft); }
 @media (max-width: 980px) {
   .main { grid-template-columns: 1fr; grid-template-rows: 60vh auto; }
   #cy { border-right: 0; border-bottom: 1px solid var(--rule); }
-  .params-grid { grid-template-columns: 1fr; }
   .toolbar { grid-template-columns: 1fr; }
 }
 </style>
@@ -1632,78 +1395,8 @@ body.dark-mode .node-card.kind-opaque  { background-color: var(--paper-soft); }
       <label for="module-filter">Module</label>
       <select id="module-filter"><option value="">∗ all modules</option></select>
     </div>
-    <div class="atlas-chips" id="atlas-chips" role="group" aria-label="filter by atlas kind">
-      <button type="button" class="atlas-chip active" data-atlas-kind="">All</button>
-      <button type="button" class="atlas-chip" data-atlas-kind="proposition"><span class="sigil">§</span>Prop</button>
-      <button type="button" class="atlas-chip" data-atlas-kind="corollary"><span class="sigil">§</span>Cor</button>
-      <button type="button" class="atlas-chip" data-atlas-kind="lemma"><span class="sigil">§</span>Lem</button>
-      <button type="button" class="atlas-chip" data-atlas-kind="theorem"><span class="sigil">§</span>Thm</button>
-      <button type="button" class="atlas-chip" data-atlas-kind="axiom"><span class="sigil">§</span>Axm</button>
-      <button type="button" class="atlas-chip" data-atlas-kind="exercise"><span class="sigil">§</span>Exr</button>
-      <button type="button" class="atlas-chip" data-atlas-kind="definition"><span class="sigil">§</span>Def</button>
-      <button type="button" class="atlas-chip" data-atlas-kind="remark"><span class="sigil">§</span>Rem</button>
-      <button type="button" class="atlas-chip" data-atlas-kind="postulate"><span class="sigil">§</span>Pst</button>
-    </div>
-    <div class="engine-badge" aria-label="layout engine">
-      <span class="roman">layout</span><span>elk</span>
-    </div>
-    <button id="toggle-controls" class="icon-btn" type="button" aria-expanded="false">parameters</button>
     <button id="modeToggle" class="icon-btn" type="button" title="toggle light/dark (Shift+D)">◐ dark</button>
-    <button id="reset" class="icon-btn" type="button" title="re-fit view">re-fit</button>
-    <button id="capture-sizes" class="icon-btn" type="button"
-            title="copy current per-card sizes to clipboard">capture sizes</button>
-    <button id="reset-sizes" class="icon-btn" type="button"
-            title="clear all manual card sizes (revert to pagerank-driven defaults)">reset sizes</button>
   </nav>
-
-  <section class="params hidden" id="layout-controls" aria-hidden="true">
-    <div class="params-grid">
-      <div class="params-section">
-        <h3><span class="num">§</span> elk <span class="annotation">eclipse layout kernel · layered</span></h3>
-        <div class="param-row">
-          <label for="elk-algorithm">algorithm</label>
-          <select id="elk-algorithm">
-            <option value="layered" selected>layered</option>
-            <option value="mrtree">mrtree</option>
-            <option value="force">force</option>
-            <option value="stress">stress</option>
-            <option value="random">random</option>
-          </select>
-        </div>
-        <div class="param-row">
-          <label for="elk-direction">direction</label>
-          <select id="elk-direction">
-            <option value="DOWN" selected>DOWN (axioms↓)</option>
-            <option value="UP">UP</option>
-            <option value="LEFT">LEFT</option>
-            <option value="RIGHT">RIGHT</option>
-          </select>
-        </div>
-        <div class="param-row">
-          <label for="elk-nodenode">nodeNode</label>
-          <input id="elk-nodenode" type="number" min="10" max="10000" value="960">
-        </div>
-        <div class="param-row">
-          <label for="elk-betweenlayers">layer Δ</label>
-          <input id="elk-betweenlayers" type="number" min="20" max="12000" value="2080">
-        </div>
-        <div class="param-row">
-          <label for="elk-strategy">node placement</label>
-          <select id="elk-strategy">
-            <option value="NETWORK_SIMPLEX" selected>network-simplex</option>
-            <option value="BRANDES_KOEPF">brandes-koepf</option>
-            <option value="LINEAR_SEGMENTS">linear-segments</option>
-            <option value="SIMPLE">simple</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="apply-col">
-        <button id="layout-apply" type="button">re-run layout</button>
-        <span class="apply-hint">edits hold until you press this</span>
-      </div>
-    </div>
-  </section>
 
   <main class="main">
     <div id="cy">
@@ -2960,50 +2653,18 @@ async function main() {
     document.addEventListener('mouseup', onUp);
   });
 
-  // ---------- Capture / reset card sizes ----------
-  // `capture sizes` copies the current per-node {id, w, h} list to
-  // the clipboard, with each card's pageRankNorm — so we can use it
-  // to retune the default size mapping or seed a preset bundle.
-  document.getElementById('capture-sizes')?.addEventListener('click', () => {
-    const rows = cy.nodes().map(n => ({
-      id: n.id(),
-      label: n.data('label'),
-      atlas_kind: n.data('atlas_kind'),
-      atlas_number: n.data('atlas_number'),
-      pageRankNorm: +n.data('pageRankNorm').toFixed(4),
-      w: Math.round(n.width()),
-      h: Math.round(n.height()),
-      manual: !!n.data('manualW'),
-    }));
-    const text = JSON.stringify(rows, null, 2);
-    navigator.clipboard.writeText(text).then(
-      () => console.log(`[capture-sizes] copied ${rows.length} rows to clipboard\nfirst 3:`, rows.slice(0, 3)),
-      () => console.log('[capture-sizes] clipboard write failed; here are the rows:', rows)
-    );
-  });
-  document.getElementById('reset-sizes')?.addEventListener('click', () => {
-    if (!confirm('Clear all manual card sizes? (Cards revert to pagerank-driven defaults.)')) return;
-    clearAllNodeSizes();
-    cy.nodes().forEach(n => {
-      n.removeData('manualW');
-      n.removeData('manualH');
-    });
-    cy.style().update();
-  });
-
   // ---------- Layout options ----------
+  // Hardcoded ELK defaults — the previous in-page params panel let
+  // these be tuned interactively; now baked-in for the static viewer.
   function elkOpts() {
     return {
       name: 'elk',
       elk: {
-        algorithm: document.getElementById('elk-algorithm')?.value || 'layered',
-        'elk.direction': document.getElementById('elk-direction')?.value || 'DOWN',
-        'elk.spacing.nodeNode':
-            +(document.getElementById('elk-nodenode')?.value || 960),
-        'elk.layered.spacing.nodeNodeBetweenLayers':
-            +(document.getElementById('elk-betweenlayers')?.value || 2080),
-        'elk.layered.nodePlacement.strategy':
-            document.getElementById('elk-strategy')?.value || 'NETWORK_SIMPLEX',
+        algorithm: 'layered',
+        'elk.direction': 'DOWN',
+        'elk.spacing.nodeNode': 960,
+        'elk.layered.spacing.nodeNodeBetweenLayers': 2080,
+        'elk.layered.nodePlacement.strategy': 'NETWORK_SIMPLEX',
       },
       fit: true, padding: 40,
       animate: false,
@@ -3245,55 +2906,6 @@ async function main() {
     cy.fit(matches, 60);
   };
 
-  // ---------- Atlas-kind chip filter ----------
-  // Same dim/undim mechanic as the module dropdown: clicking a chip
-  // dims everything whose `atlas_kind` doesn't match (along with all
-  // edges that aren't between two matches' neighbourhoods). The `All`
-  // chip clears the filter. Only one chip can be active at a time.
-  const chipContainer = document.getElementById('atlas-chips');
-  chipContainer.querySelectorAll('.atlas-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      chipContainer.querySelectorAll('.atlas-chip').forEach(c =>
-        c.classList.remove('active'));
-      chip.classList.add('active');
-      const kind = chip.dataset.atlasKind || '';
-      cy.elements().removeClass('dim');
-      if (!kind) return;
-      const matches = cy.nodes().filter(n => n.data('atlas_kind') === kind);
-      if (matches.length === 0) {
-        // No matches: dim everything so the user sees the empty result.
-        cy.elements().addClass('dim');
-        return;
-      }
-      cy.elements()
-        .difference(matches.union(matches.connectedEdges()))
-        .addClass('dim');
-      cy.fit(matches, 60);
-    });
-  });
-
-  // ---------- Layout runner ----------
-  function runLayout() {
-    if (typeof cytoscapeElk === 'undefined') {
-      alert('ELK plugin failed to load — check network access to unpkg.');
-      return;
-    }
-    cy.layout(elkOpts()).run();
-  }
-
-  document.getElementById('layout-apply').onclick = runLayout;
-  document.getElementById('reset').onclick = () => cy.fit(60);
-
-  // ---------- Params drawer ----------
-  const toggle = document.getElementById('toggle-controls');
-  toggle.onclick = () => {
-    const panel = document.getElementById('layout-controls');
-    const willHide = !panel.classList.contains('hidden');
-    panel.classList.toggle('hidden');
-    panel.setAttribute('aria-hidden', willHide ? 'true' : 'false');
-    toggle.setAttribute('aria-expanded', willHide ? 'false' : 'true');
-    toggle.textContent = willHide ? 'parameters' : 'parameters · open';
-  };
 }
 
 main();

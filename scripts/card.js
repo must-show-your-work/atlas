@@ -585,15 +585,22 @@ function renderTypeHtml(rawType, opts = {}) {
   return texToKatexHtml(tex, { ...opts, displayMode: true });
 }
 
-// AST-path render: take a finished LaTeX string from LeanTeX
-// (already represents the full type) and just hand it to KaTeX. No
-// regex pipeline, no binder restructuring, no paren stripping — all
-// of that lives in LeanTeX's rules on the Lean side. Used in
-// `?compare=1` mode alongside `renderTypeHtml` so the two paths can
-// be visually checked decl-by-decl.
+// AST-path render: take a finished LaTeX string from LeanTeX,
+// translate its word-form connectives (`\implies`, `\mathrm{and}`,
+// `\mathrm{or}`) to the math-symbol forms the existing pipeline
+// breaks on (`\to`, `\wedge`, `\vee`), then run the same paren
+// strip + multi-line aligned break the regex path applies. Result
+// is visually parallel to `renderTypeHtml` so the two surfaces
+// match while we drive LeanTeX coverage closed.
 function renderTypeHtmlFromTex(latexString, opts = {}) {
   if (!latexString) return '';
-  return texToKatexHtml(latexString, { ...opts, displayMode: true });
+  let tex = latexString
+    .replace(/\\implies\b/g, '\\to')
+    .replace(/\\mathrel\{\\mathrm\{and\}\}/g, '\\wedge')
+    .replace(/\\mathrel\{\\mathrm\{or\}\}/g, '\\vee');
+  tex = stripPredicateParens(tex);
+  tex = breakAtTopLevelArrows(tex);
+  return texToKatexHtml(tex, { ...opts, displayMode: true });
 }
 
 // ---------- Markers + side-by-side source ----------

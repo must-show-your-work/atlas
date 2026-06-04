@@ -22,7 +22,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,0..100,0..1;1,9..144,300..900,0..100,0..1&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./vendor/katex/katex.min.css?v=local-10">
 <script src="./vendor/katex/katex.min.js?v=local-10"></script>
-<script src="./card.js?v=34"></script>
+<script src="./card.js?v=35"></script>
 
 <style>
 :root {
@@ -237,15 +237,6 @@ html, body {
   padding: 10px 0;
 }
 .card-statement.empty { color: var(--ink-ghost); font-style: italic; font-size: 13px; }
-/* `?compare=1` mode: stack the regex-pipeline render and the
-   LeanTeX-AST render with small labels so the two paths can be
-   visually checked decl-by-decl during the cutover. */
-.card-statement-compare { display: flex; flex-direction: column; gap: 10px; }
-.card-statement-compare .cmp-label {
-  font: 500 10px/1 "JetBrains Mono", monospace; letter-spacing: 0.12em;
-  text-transform: uppercase; color: var(--ink-muted); margin-top: 4px;
-}
-.card-statement-compare .cmp-label:first-child { margin-top: 0; }
 .card-statement .katex { font-size: 1em; }
 .card-figure.placeholder {
   min-height: 60px; color: var(--ink-ghost); font-style: italic; font-size: 13px;
@@ -1301,30 +1292,16 @@ function renderProofTriColumn(d) {
   return `<div class="proof-grid">${sourceCells.join('')}${leftCells}${rightCells}</div>`;
 }
 
-// `?compare=1` in the URL turns on the side-by-side LeanTeX-vs-regex
-// statement render. Off by default — keeps the card uncluttered for
-// non-audit reviews.
-const COMPARE_MODE = new URLSearchParams(location.search).get('compare') === '1';
-
 function renderCard(d) {
-  const typeHtml = A.renderTypeHtml(d.type_pp, { displayMode: false });
-  // LeanTeX path: hand the finished LaTeX from blueprint/type-tex.json
-  // to KaTeX directly. Only used when COMPARE_MODE is on AND the
-  // dump produced a string for this decl.
-  const typeTexHtml = (COMPARE_MODE && d.type_tex)
-    ? A.renderTypeHtmlFromTex(d.type_tex) : '';
+  // Statement render comes from LeanTeX's AST-walking pretty printer
+  // (`blueprint/type-tex.json`, populated by giyf's `DumpTypeTeX.lean`).
+  // The regex-driven `leanToLatex` pipeline was removed once the AST
+  // path produced equivalent output for every Pasch-era decl; see
+  // `shed/forks/LeanTeX.md` for the per-rule trail.
+  const typeTexHtml = d.type_tex ? A.renderTypeHtmlFromTex(d.type_tex) : '';
   const cb = (window.commentaryByDecl && window.commentaryByDecl[d.id]) || null;
 
-  // In compare mode, stack both renders with small labels above each;
-  // out of compare mode, just render the regex pipeline as before.
-  const statementBody = COMPARE_MODE
-    ? `<div class="card-statement-compare">
-        <div class="cmp-label">regex pipeline (current)</div>
-        <div class="card-statement${typeHtml ? '' : ' empty'}">${typeHtml || '(no type signature)'}</div>
-        <div class="cmp-label">leantex (ast)</div>
-        <div class="card-statement${typeTexHtml ? '' : ' empty'}">${typeTexHtml || '(no type-tex — DumpTypeTeX may not have run, or the decl failed in LeanTeX)'}</div>
-      </div>`
-    : `<div class="card-statement${typeHtml ? '' : ' empty'}">${typeHtml || '(no type signature)'}</div>`;
+  const statementBody = `<div class="card-statement${typeTexHtml ? '' : ' empty'}">${typeTexHtml || '(no type signature)'}</div>`;
   const figureBody = d.figure_svg
     ? `<div class="card-figure">${d.figure_svg}</div>`
     : `<div class="card-figure placeholder">no figure</div>`;

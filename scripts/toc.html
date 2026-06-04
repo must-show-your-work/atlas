@@ -22,7 +22,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,0..100,0..1;1,9..144,300..900,0..100,0..1&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./vendor/katex/katex.min.css?v=local-10">
 <script src="./vendor/katex/katex.min.js?v=local-10"></script>
-<script src="./card.js?v=26"></script>
+<script src="./card.js?v=27"></script>
 
 <style>
 :root {
@@ -251,7 +251,11 @@ html, body {
   min-height: 60px; color: var(--ink-ghost); font-style: italic; font-size: 13px;
   padding: 10px 0;
 }
-.card-figure svg { max-width: 100%; height: auto; color: var(--ink); }
+/* Figure sized to ~60% of its container so it doesn't dominate the
+   card. The empty side space gets reclaimed by the proof tri-column
+   below — the figure section is laid out as a centered block. */
+.card-figure { display: flex; justify-content: center; }
+.card-figure svg { max-width: 60%; height: auto; color: var(--ink); }
 /* Figures drawn by `renderBare` (the atlas-bare SVG path) reach for
    `currentColor` on all strokes / fills, so the figure inverts with
    the host page mode. Text colors track `--ink` / `--ink-muted`
@@ -568,8 +572,9 @@ body.mode-production .bn-line:hover { background: transparent; }
    that introduced it. Sized to a fraction of the column so the SVG
    doesn't dominate the proof flow. */
 .aux-figure-body { display: flex; flex-direction: column; gap: 4px; }
+.aux-figure-svg { display: flex; justify-content: center; }
 .aux-figure-svg svg {
-  max-width: 100%; height: auto; color: var(--ink);
+  max-width: 60%; height: auto; color: var(--ink);
   background: var(--paper); border-radius: 3px;
   border: 1px solid var(--paper-deep);
 }
@@ -1087,6 +1092,34 @@ function computeMarkerLines(source, baseLine) {
     if (code.endsWith(':= by')) { preludeEnd = i; break; }
   }
   for (let i = 0; i <= preludeEnd; i++) elided.add(baseLine + i);
+
+  // `auxillary { … }` blocks: not markers, but their source belongs
+  // in the rendered SVG (attached separately as aux figures), not in
+  // the proof code. One-liner `auxillary { assert ... }` and
+  // multi-line `auxillary { ⏎ ... ⏎ }` both elide here via brace
+  // counting. String literals are ignored for brace tracking, so
+  // `auxillary "desc" { ... }` works too.
+  const AUX_KW = /^\s*(?:·\s+)?auxillary\b/;
+  let ai = preludeEnd + 1;
+  while (ai < lines.length) {
+    if (!AUX_KW.test(lines[ai])) { ai++; continue; }
+    let depth = 0, sawOpen = false, inStr = false, k = ai;
+    while (k < lines.length) {
+      elided.add(baseLine + k);
+      const ln = lines[k];
+      for (let p = 0; p < ln.length; p++) {
+        const ch = ln[p];
+        if (ch === '\\') { p++; continue; }
+        if (ch === '"') { inStr = !inStr; continue; }
+        if (inStr) continue;
+        if (ch === '{') { depth++; sawOpen = true; }
+        else if (ch === '}') { depth--; }
+      }
+      if (sawOpen && depth === 0) break;
+      k++;
+    }
+    ai = k + 1;
+  }
 
   let i = preludeEnd + 1;
   while (i < lines.length) {

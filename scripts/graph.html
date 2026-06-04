@@ -133,6 +133,18 @@ body.dark-mode .node-card.kind-opaque  { background-color: var(--paper-soft); }
    user input even if needed). */
 .node-card .card-pane { overflow: visible; }
 
+/* Outer wrapper that matches the cytoscape node's box. The inner
+   `.node-card` is fixed at NATURAL_W × naturalH and scaled visually
+   via `transform: scale(s)`; the outer is the scaled box so ELK
+   spaces neighbors correctly. `overflow: hidden` clips the scaled
+   card to the cytoscape bound (matters only when a manual resize
+   shrinks the bound below the scaled content). */
+.node-card-outer {
+  position: relative;
+  overflow: hidden;
+  pointer-events: none;
+}
+
 /* ---------- Layout shell ---------- */
 .shell {
   position: relative; z-index: 1;
@@ -1835,32 +1847,38 @@ function renderSourceWithMarkers(d) {
 
 window.renderSourceWithMarkers = renderSourceWithMarkers;
 
+// Module-level natural-card constants. The inner editorial card always
+// lays out at NATURAL_W; PageRank-derived scaling happens at the outer
+// container via CSS transform, so the inner layout (KaTeX wrapping,
+// proof tri-column widths) stays constant across importance tiers.
+const NATURAL_W = 1700;
+const NATURAL_H_DEFAULT = 1800;
+
 function renderNodeCard(d) {
   const kind = d.kind || 'other';
   const sorry = d.has_sorry ? ' has-sorry' : '';
-  // Size bucket controls how much doc/proof text we show; smaller
-  // cards just don't have room for everything.
   const bucket = d.sizeBucket || 'size-medium';
-  // Explicit pixel sizes — `cytoscape-node-html-label` doesn't pass
-  // the node's box size down to the HTML, so `width: 100%` would
-  // resolve to natural content size and leave the cytoscape node
-  // bounds peeking through. `d.w` / `d.h` are kept in sync with
-  // `node.style('width'/'height')` by the main resize-handler.
-  const w = d.w ? `${Math.round(d.w)}px` : '1050px';
-  const h = d.h ? `${Math.round(d.h)}px` : '1485px';
-  const sizeStyle = `width:${w};height:${h}`;
-
-  // Shared editorial card from `card.js` (same template the toc viewer
-  // uses). Flags are off in the graph context — the card is a viewer
-  // not a review surface here. Refs + notes are skipped; the graph
-  // itself shows refs as edges, and notes live in the toc viewer.
+  const naturalW = d.naturalW || NATURAL_W;
+  const naturalH = d.naturalH || NATURAL_H_DEFAULT;
+  const scale = d.scale || 1;
+  // Outer bound = cytoscape node geometry (`d.w`/`d.h` are
+  // `natural * scale` after the pagerank pass). Inner card lays out
+  // at the natural pixel size and is visually scaled via CSS
+  // transform — keeps KaTeX/grid layout constant across tiers and
+  // lets ELK space the outer bounds correctly.
+  const outerW = Math.round(d.w || naturalW * scale);
+  const outerH = Math.round(d.h || naturalH * scale);
   const resizeHandle = `<div class="node-resize" data-node-id="${escapeHtml(d.id)}" title="drag to resize"></div>`;
   return `
-    <div class="node-card paper kind-${kind} ${bucket}${sorry}" data-node-id="${escapeHtml(d.id)}" style="${sizeStyle}">
-      <div class="card-pane">
-        ${A.renderCard(d, { withFlags: false })}
+    <div class="node-card-outer" data-node-id="${escapeHtml(d.id)}"
+         style="width:${outerW}px;height:${outerH}px;">
+      <div class="node-card paper kind-${kind} ${bucket}${sorry}"
+           style="width:${naturalW}px;height:${naturalH}px;transform:scale(${scale});transform-origin:top left;">
+        <div class="card-pane">
+          ${A.renderCard(d, { withFlags: false })}
+        </div>
+        ${resizeHandle}
       </div>
-      ${resizeHandle}
     </div>`;
 }
 
@@ -2518,26 +2536,29 @@ async function main() {
   // card resolves to its content's natural size (which leaves the
   // cytoscape node bounds peeking through, showing as a red rectangle
   // when the node is selected).
-  // Uniform card size: every node renders the full toc editorial card
-  // at a fixed canvas sized for the right ~2/3 of a 1440p display
-  // (~2560 px wide). The auto-size pass below grows height per node to
-  // fit the rendered content; width stays at CARD_W since the
-  // editorial card's 12-column grid was tuned for this width.
-  // Pagerank-based scaling is on the roadmap but disabled while we
-  // drive the card layout itself. Manual resize-handle overrides still
-  // apply.
-  const CARD_W = 1700;
-  const CARD_H = 1800;
+  // Card geometry. Natural size is fixed (the inner editorial card
+  // always lays out at NATURAL_W × naturalH). PageRank-derived
+  // `scale` is applied as a CSS transform on the inner card; the
+  // outer cytoscape bound (`w`/`h`) is `natural * scale` so ELK
+  // spaces nodes correctly at the displayed visual size.
+  const SCALE_MIN = 0.7;
+  const SCALE_MAX = 1.4;
   cy.nodes().forEach(n => {
     const stored = loadNodeSize(n.id());
-    const w = stored?.w ?? CARD_W;
-    const h = stored?.h ?? CARD_H;
+    const norm = n.data('pageRankNorm') ?? 0.5;
+    const scale = SCALE_MIN + norm * (SCALE_MAX - SCALE_MIN);
+    n.data('naturalW', NATURAL_W);
+    n.data('naturalH', NATURAL_H_DEFAULT);
+    n.data('scale', scale);
     if (stored) {
       n.data('manualW', stored.w);
       n.data('manualH', stored.h);
+      n.data('w', stored.w);
+      n.data('h', stored.h);
+    } else {
+      n.data('w', NATURAL_W * scale);
+      n.data('h', NATURAL_H_DEFAULT * scale);
     }
-    n.data('w', w);
-    n.data('h', h);
   });
   cy.style()
     .selector('node')
@@ -2575,22 +2596,27 @@ async function main() {
   function autoSizeCardsToFit() {
     const measure = document.createElement('div');
     measure.style.cssText = 'position:absolute; left:-9999px; top:0; visibility:hidden; pointer-events:none;';
-    measure.style.width = CARD_W + 'px';
+    measure.style.width = NATURAL_W + 'px';
     document.body.appendChild(measure);
     let any = false;
     cy.nodes().forEach(n => {
       const d = n.data();
       if (d.manualH) return;  // resize-handle override wins
       measure.innerHTML = renderNodeCard(d);
-      const card = measure.firstElementChild;
+      // Drill to the inner .node-card; the outer wrapper is the
+      // scaled cytoscape bound, the inner is the natural-size card.
+      const card = measure.querySelector('.node-card');
       if (!card) return;
-      // Force height:auto so the inline `height:Hpx` doesn't clamp
-      // the measurement to the placeholder default.
+      // Strip the inline height + transform so scrollHeight reflects
+      // the un-clamped, un-scaled natural content height at NATURAL_W.
       card.style.height = 'auto';
-      const naturalH = card.scrollHeight;
-      const desired = Math.max(CARD_H, naturalH + 32);
-      if (Math.abs((d.h || 0) - desired) > 4) {
-        n.data('h', desired);
+      card.style.transform = 'none';
+      const naturalH = Math.max(NATURAL_H_DEFAULT, card.scrollHeight + 32);
+      if (Math.abs((d.naturalH || 0) - naturalH) > 4) {
+        const scale = d.scale || 1;
+        n.data('naturalH', naturalH);
+        n.data('w', NATURAL_W * scale);
+        n.data('h', naturalH * scale);
         any = true;
       }
     });

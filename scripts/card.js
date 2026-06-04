@@ -546,31 +546,37 @@ function stripPredicateParens(tex) {
 // conclusion) is upgraded to `\implies` and gets `[10pt]` of extra
 // vertical space above it, so hypothesis-block and conclusion-block
 // read as visually distinct chunks.
-// Find the position of the comma that closes the LAST top-level
-// `\forall` quantifier prefix. Returns -1 if no top-level forall
-// exists. Used by `breakAtTopLevelArrows` to put the entire
-// quantifier section on its own line before the hypotheses.
+// Find the position of the comma that closes the quantifier section
+// (the run of `\forall <name> : <type>` prefixes). Returns -1 if the
+// statement has no quantifier prefix. Locates the LAST top-level
+// ` : ` token — which always appears inside a binder, never inside
+// the hypothesis chain — and breaks at the next top-level comma
+// after it. Robust against both the regex pipeline's
+// `\forall A B C : Point, L : Line, body` shape and the LeanTeX
+// `\forall A B C : Point, \forall L : Line, body` shape.
 function findQuantifierEndPos(tex) {
-  let lastForallPos = -1;
+  let lastColonEnd = -1;
   let depth = 0;
   let i = 0;
-  while (i < tex.length) {
+  while (i < tex.length - 3) {
     const c = tex[i];
     if (c === '\\') {
-      if (depth === 0 && tex.startsWith('\\forall', i) && /\W|$/.test(tex[i+7] || '')) {
-        lastForallPos = i;
-      }
       let j = i + 1;
       while (j < tex.length && /[A-Za-z]/.test(tex[j])) j++;
       i = j;
       continue;
     }
-    if (c === '(' || c === '{') depth++;
-    else if (c === ')' || c === '}') depth--;
+    if (c === '(' || c === '{') { depth++; i++; continue; }
+    if (c === ')' || c === '}') { depth--; i++; continue; }
+    if (depth === 0 && tex.substr(i, 3) === ' : ') {
+      lastColonEnd = i + 3;
+      i = lastColonEnd;
+      continue;
+    }
     i++;
   }
-  if (lastForallPos === -1) return -1;
-  let pos = lastForallPos + 7;
+  if (lastColonEnd === -1) return -1;
+  let pos = lastColonEnd;
   depth = 0;
   while (pos < tex.length) {
     const c = tex[pos];
@@ -602,6 +608,27 @@ function breakAtTopLevelArrows(tex) {
     if (b.pos > qEndPos) breaks.push(b);
   }
   if (breaks.length === 0) return tex;
+  // Inline `\wedge` breaks when both conjuncts are short — `A \wedge B`
+  // shouldn't fragment onto two lines if the entire conjunction fits
+  // comfortably alongside its neighbouring connectives. Threshold tuned
+  // for the common `<dash chain> \wedge <dash chain>` shape; long
+  // parenthesized conjuncts (Pasch's conclusion) still break.
+  const WEDGE_INLINE_MAX = 30;
+  const filteredBreaks = [];
+  for (let k = 0; k < breaks.length; k++) {
+    const b = breaks[k];
+    if (b.kind === 'wedge') {
+      const prevEnd = k > 0 ? breaks[k - 1].pos + breaks[k - 1].len : 0;
+      const nextStart = k + 1 < breaks.length ? breaks[k + 1].pos : tex.length;
+      const lhs = tex.substring(prevEnd, b.pos).trim();
+      const rhs = tex.substring(b.pos + b.len, nextStart).trim();
+      if (lhs.length < WEDGE_INLINE_MAX && rhs.length < WEDGE_INLINE_MAX) continue;
+    }
+    filteredBreaks.push(b);
+  }
+  if (filteredBreaks.length === 0) return tex;
+  breaks.length = 0;
+  Array.prototype.push.apply(breaks, filteredBreaks);
   // Find the LAST top-level `\to` — that's the conclusion arrow.
   let lastToIdx = -1;
   for (let i = 0; i < breaks.length; i++) {

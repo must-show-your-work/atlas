@@ -42,6 +42,12 @@
 <link rel="stylesheet" href="./vendor/katex/katex.min.css?v=local-10">
 <script src="./vendor/katex/katex.min.js?v=local-10"></script>
 
+<!-- Shared card stylesheet + renderer (single source of truth across the
+     toc and graph viewers). card.js defines `window.AtlasCard` with
+     `renderCard`, `renderTypeHtmlFromTex`, the proof-grid helpers, etc. -->
+<link rel="stylesheet" href="./card.css?v=1">
+<script src="./card.js?v=36"></script>
+
 <!-- HTML-inside-node plugin: lets us put a real DOM card (with KaTeX) at
      each node, scaled by Cytoscape's pan/zoom. -->
 <script src="https://unpkg.com/cytoscape-node-html-label@1.2.2/dist/cytoscape-node-html-label.min.js"></script>
@@ -1711,6 +1717,12 @@ body::after {
 </div>
 
 <script>
+// Shared card renderer loaded from card.js (see <script src> above).
+// `A.renderCard(d, opts)` produces the same editorial card the toc
+// viewer uses; renderNodeCard wraps it in the node-card sizing
+// container so cytoscape-node-html-label can place it.
+const A = window.AtlasCard;
+
 // ---------- Helpers ----------
 function escapeHtml(s) {
   if (s == null) return '';
@@ -2091,107 +2103,19 @@ function renderNodeCard(d) {
   const w = d.w ? `${Math.round(d.w)}px` : '1050px';
   const h = d.h ? `${Math.round(d.h)}px` : '1485px';
   const sizeStyle = `width:${w};height:${h}`;
-  const docLimit =
-    bucket === 'size-poster' ? 600 :
-    bucket === 'size-large'  ? 380 :
-    bucket === 'size-medium' ? 220 : 110;
-  const doc = d.doc ? truncate(d.doc, docLimit) : '';
-  const typeHtml = renderTypeHtml(d.type_pp);
 
-  // Commentary stub — placeholder for the upcoming `atlas commentary
-  // <ref> "<text>"` tag (see TODO). Renders even when empty so the
-  // visual rhythm of the card is stable across decls.
-  const commentary = d.atlas_commentary || '';
-  const commentarySection = (bucket === 'size-small') ? '' : `
-    <div class="node-section node-commentary${commentary ? '' : ' empty'}">
-      <div class="node-section-label">commentary</div>
-      <div class="node-section-body">
-        ${commentary ? escapeHtml(commentary) : '<span class="node-section-placeholder">(no commentary tagged)</span>'}
-      </div>
-    </div>`;
-
-  // Source section — the decl's raw Lean source (signature + proof),
-  // sliced per-decl upstream (export_graph.py reads line_start/end
-  // out of decls.json). Client-side syntax-highlighted via
-  // `highlightLean` so it reads like an editor pane. Goes in the
-  // body grid spanning both columns at the bottom row.
-  // Source pane. When the decl has `quoting`/`comment`/`page break`
-  // markers, render as a two-column side-by-side with markers on the
-  // left and code on the right. Otherwise the plain highlighted block.
-  const swm = renderSourceWithMarkers(d);
-  const sourceSection = !swm.html ? '' : `
-    <div class="node-section node-source${swm.hasMarkers ? ' node-source-narrative' : ''}">
-      <div class="node-section-label">${swm.hasMarkers ? 'book ⟷ proof' : 'source'}</div>
-      ${swm.html}
-    </div>`;
-
-  // Metadata footer: module + line range + decl FQN. Small print but
-  // present at every size so the card is always traceable back to source.
-  const metaFooter = `
-    <div class="node-card-meta">
-      <span class="node-card-meta-mod">${escapeHtml(d.module || '')}</span>
-      ${d.line_start ? `<span class="node-card-meta-sep">·</span><span class="node-card-meta-line">L${d.line_start}${d.line_end && d.line_end !== d.line_start ? `–${d.line_end}` : ''}</span>` : ''}
-    </div>`;
-
-  // Per-card resize handle (bottom-right corner). Pointer events are
-  // off on the card itself (so cytoscape gets clicks/drags); the
-  // handle re-enables them just for itself so a mousedown there is
-  // captured by the document-level resize listener.
+  // Shared editorial card from `card.js` (same template the toc viewer
+  // uses). Flags are off in the graph context — the card is a viewer
+  // not a review surface here. Refs + notes are skipped; the graph
+  // itself shows refs as edges, and notes live in the toc viewer.
   const resizeHandle = `<div class="node-resize" data-node-id="${escapeHtml(d.id)}" title="drag to resize"></div>`;
-
-  // Atlas-aware rendering: when the decl carries `@[atlas …]`, render
-  // the structured marker (kind chip + book number + prose title) as
-  // the card head instead of the bare decl name. The decl name moves
-  // to a quiet line at the bottom so the FQN is still discoverable
-  // without dominating the typography.
-  if (d.atlas_kind) {
-    return `
-      <div class="node-card paper atlas kind-${kind} ${bucket}${sorry}" data-node-id="${escapeHtml(d.id)}" style="${sizeStyle}">
-        <div class="node-card-atlas-head">
-          <span class="node-card-atlas-kind">§ ${escapeHtml(d.atlas_kind)}</span>
-          <span class="node-card-atlas-sep">·</span>
-          <span class="node-card-atlas-number">${escapeHtml(d.atlas_number || '')}</span>
-          ${d.has_sorry ? '<span class="node-card-flag" style="margin-left:auto">sorry</span>' : ''}
-        </div>
-        <div class="node-card-atlas-title">${escapeHtml(d.atlas_title || d.label)}</div>
-        ${doc ? `<div class="node-card-doc">${escapeHtml(doc)}</div>` : ''}
-        <div class="node-card-body">
-          <div class="node-section node-statement">
-            <div class="node-section-label">statement</div>
-            <div class="node-type${typeHtml ? '' : ' empty'}">${typeHtml}</div>
-          </div>
-          ${commentarySection}
-          ${renderCommentarySection(d.id)}
-          ${sourceSection}
-        </div>
-        ${metaFooter}
-        <div class="node-card-atlas-fqn">${escapeHtml(d.label)}</div>
-        ${resizeHandle}
-      </div>
-    `;
-  }
-
   return `
     <div class="node-card paper kind-${kind} ${bucket}${sorry}" data-node-id="${escapeHtml(d.id)}" style="${sizeStyle}">
-      <div class="node-card-head">
-        <span class="node-card-kind"><span class="glyph">${glyphForKind(kind)}</span> ${kind}</span>
-        ${d.has_sorry ? '<span class="node-card-flag">sorry</span>' : ''}
+      <div class="card-pane">
+        ${A.renderCard(d, { withFlags: false })}
       </div>
-      <div class="node-card-name">${escapeHtml(d.label)}</div>
-      ${doc ? `<div class="node-card-doc">${escapeHtml(doc)}</div>` : ''}
-      <div class="node-card-body">
-        <div class="node-section node-statement">
-          <div class="node-section-label">statement</div>
-          <div class="node-type${typeHtml ? '' : ' empty'}">${typeHtml}</div>
-        </div>
-        ${commentarySection}
-        ${sourceSection}
-        ${bookNarrativeSection}
-      </div>
-      ${metaFooter}
       ${resizeHandle}
-    </div>
-  `;
+    </div>`;
 }
 
 // ---------- Lean → LaTeX (best-effort) ----------

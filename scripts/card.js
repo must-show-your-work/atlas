@@ -546,8 +546,61 @@ function stripPredicateParens(tex) {
 // conclusion) is upgraded to `\implies` and gets `[10pt]` of extra
 // vertical space above it, so hypothesis-block and conclusion-block
 // read as visually distinct chunks.
+// Find the position of the comma that closes the LAST top-level
+// `\forall` quantifier prefix. Returns -1 if no top-level forall
+// exists. Used by `breakAtTopLevelArrows` to put the entire
+// quantifier section on its own line before the hypotheses.
+function findQuantifierEndPos(tex) {
+  let lastForallPos = -1;
+  let depth = 0;
+  let i = 0;
+  while (i < tex.length) {
+    const c = tex[i];
+    if (c === '\\') {
+      if (depth === 0 && tex.startsWith('\\forall', i) && /\W|$/.test(tex[i+7] || '')) {
+        lastForallPos = i;
+      }
+      let j = i + 1;
+      while (j < tex.length && /[A-Za-z]/.test(tex[j])) j++;
+      i = j;
+      continue;
+    }
+    if (c === '(' || c === '{') depth++;
+    else if (c === ')' || c === '}') depth--;
+    i++;
+  }
+  if (lastForallPos === -1) return -1;
+  let pos = lastForallPos + 7;
+  depth = 0;
+  while (pos < tex.length) {
+    const c = tex[pos];
+    if (c === '\\') {
+      let j = pos + 1;
+      while (j < tex.length && /[A-Za-z]/.test(tex[j])) j++;
+      pos = j;
+      continue;
+    }
+    if (c === '(' || c === '{') { depth++; pos++; continue; }
+    if (c === ')' || c === '}') { depth--; pos++; continue; }
+    if (c === ',' && depth === 0) return pos;
+    pos++;
+  }
+  return -1;
+}
+
 function breakAtTopLevelArrows(tex) {
-  const breaks = topLevelBreakPositions(tex);
+  const arrowBreaks = topLevelBreakPositions(tex);
+  const qEndPos = findQuantifierEndPos(tex);
+  // Stitch the quantifier-section terminator into the same break
+  // sequence as the arrows; arrow breaks before the quantifier end
+  // would mean a paren-depth bookkeeping error, so just drop them.
+  const breaks = [];
+  if (qEndPos !== -1) {
+    breaks.push({ pos: qEndPos, len: 1, kind: 'qend' });
+  }
+  for (const b of arrowBreaks) {
+    if (b.pos > qEndPos) breaks.push(b);
+  }
   if (breaks.length === 0) return tex;
   // Find the LAST top-level `\to` — that's the conclusion arrow.
   let lastToIdx = -1;
@@ -560,7 +613,9 @@ function breakAtTopLevelArrows(tex) {
     const b = breaks[i];
     pieces.push(tex.substring(cursor, b.pos).trimEnd());
     const isConclusionArrow = i === lastToIdx;
-    if (isConclusionArrow) {
+    if (b.kind === 'qend') {
+      pieces.push(', \\\\\n  &');
+    } else if (isConclusionArrow) {
       pieces.push(' \\\\[10pt]\n  &\\implies\\ ');
     } else if (b.kind === 'wedge') {
       pieces.push(' \\\\\n  &\\wedge\\ ');

@@ -22,7 +22,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,0..100,0..1;1,9..144,300..900,0..100,0..1&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./vendor/katex/katex.min.css?v=local-10">
 <script src="./vendor/katex/katex.min.js?v=local-10"></script>
-<script src="./card.js?v=25"></script>
+<script src="./card.js?v=26"></script>
 
 <style>
 :root {
@@ -404,7 +404,7 @@ body.mode-production .bn-line:hover { background: transparent; }
   grid-template-columns: minmax(8em, 1fr) auto minmax(8em, 1fr);
   grid-auto-rows: auto;
   border: 1px solid var(--paper-deep);
-  border-radius: 3px; background: var(--paper-soft);
+  border-radius: 3px; background: var(--paper);
   overflow: hidden;
 }
 /* Each marker cell explicitly sets `grid-row: <start> / <end>` so it
@@ -438,12 +438,12 @@ body.mode-production .bn-line:hover { background: transparent; }
   overflow-wrap: break-word;
 }
 .proof-col-quoting {
-  background: var(--paper-soft);
+  background: var(--paper);
   border-right: 1px solid var(--paper-deep);
   font-style: italic;
 }
 .proof-col-commentary {
-  background: var(--paper-soft);
+  background: var(--paper);
   border-left: 1px solid var(--paper-deep);
 }
 .proof-col-source {

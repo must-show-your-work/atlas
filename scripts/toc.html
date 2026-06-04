@@ -22,7 +22,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,0..100,0..1;1,9..144,300..900,0..100,0..1&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./vendor/katex/katex.min.css?v=local-10">
 <script src="./vendor/katex/katex.min.js?v=local-10"></script>
-<script src="./card.js?v=27"></script>
+<script src="./card.js?v=28"></script>
 
 <style>
 :root {
@@ -151,10 +151,10 @@ html, body {
   grid-template-columns: repeat(12, 1fr);
   grid-template-rows: auto auto auto auto auto auto auto;
   grid-template-areas:
-    "head  head  head  head  head  head  head    head    head    head    head    head"
-    "lhs   lhs   lhs   lhs   lhs   lhs   figure  figure  figure  figure  figure  figure"
-    "proof proof proof proof proof proof proof   proof   proof   proof   proof   proof"
-    "refs  refs  refs  refs  refs  refs  refs    notes   notes   notes   notes   notes"
+    "head  head  head  head  head  head  head  head  head    head    head    head"
+    "lhs   lhs   lhs   lhs   lhs   lhs   lhs   lhs   figure  figure  figure  figure"
+    "proof proof proof proof proof proof proof proof proof   proof   proof   proof"
+    "refs  refs  refs  refs  refs  refs  refs  refs  notes   notes   notes   notes"
     "footer footer footer footer footer footer footer footer footer footer footer footer";
   column-gap: 24px;
   row-gap: 16px;
@@ -251,11 +251,11 @@ html, body {
   min-height: 60px; color: var(--ink-ghost); font-style: italic; font-size: 13px;
   padding: 10px 0;
 }
-/* Figure sized to ~60% of its container so it doesn't dominate the
-   card. The empty side space gets reclaimed by the proof tri-column
-   below — the figure section is laid out as a centered block. */
-.card-figure { display: flex; justify-content: center; }
-.card-figure svg { max-width: 60%; height: auto; color: var(--ink); }
+/* Figure occupies the 4-col cell (33% of card width) at its full
+   inner width. The lhs stack expands to 8 cols on the same row,
+   absorbing the horizontal space that was previously slack around
+   a centered 60% figure. */
+.card-figure svg { width: 100%; height: auto; color: var(--ink); }
 /* Figures drawn by `renderBare` (the atlas-bare SVG path) reach for
    `currentColor` on all strokes / fills, so the figure inverts with
    the host page mode. Text colors track `--ink` / `--ink-muted`
@@ -578,6 +578,35 @@ body.mode-production .bn-line:hover { background: transparent; }
   background: var(--paper); border-radius: 3px;
   border: 1px solid var(--paper-deep);
 }
+/* Aux figures share the same `.lbl` / `.txt` / `.callout` class
+   convention as `.card-figure` SVGs but live under `.aux-figure-svg`,
+   so the host CSS needs a parallel block — otherwise labels render
+   as tiny default-styled text and effectively disappear. Also force
+   stroke-width via CSS (overrides the inline SVG attribute) so lines
+   stay legible at the 60% display scale. */
+.aux-figure-svg svg .txt,
+.aux-figure-svg svg .lbl {
+  font-family: "DejaVu Serif", "Fraunces", serif;
+  font-size: 22px;
+  fill: var(--ink);
+  stroke: var(--paper);
+  stroke-width: 4px;
+  paint-order: stroke;
+}
+.aux-figure-svg svg .lbl { font-style: italic; }
+.aux-figure-svg svg .callout {
+  font-family: "DejaVu Sans", "Inter", sans-serif;
+  font-size: 18px;
+  fill: var(--ink-muted);
+  stroke: var(--paper);
+  stroke-width: 4px;
+  paint-order: stroke;
+}
+/* Segment / ray / line strokes: bump from the source SVG's 1.5 to
+   2.5 so they don't fade out at 60% display scale. CSS `stroke-width`
+   property wins over the SVG `stroke-width` attribute. */
+.aux-figure-svg svg line { stroke-width: 2.5; }
+.aux-figure-svg svg circle { r: 5; }
 .aux-figure-desc {
   font-style: italic; color: var(--ink-muted); font-size: 0.9em;
 }

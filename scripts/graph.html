@@ -104,6 +104,26 @@ body::after {
    palette. Drop them in dark mode; the solid background is enough. */
 body.dark-mode::before, body.dark-mode::after { display: none; }
 
+/* Dark-mode overrides for graph.html-specific elements whose original
+   rules hardcoded cream-paper RGB rather than going through `--paper`.
+   We don't want to touch the light-mode look, so override only when
+   `body.dark-mode` matches.
+
+   `.node-card` was `#f7efd8` (cream) + a warm SVG noise overlay; both
+   read as a bright stain on the dark canvas. Use the paper-soft var
+   for the card body and drop the noise. Kind-tinted variants
+   (`.kind-theorem` etc.) likewise switch from cream-pastel tints to
+   deep-paper-soft variants. */
+body.dark-mode .node-card {
+  background: var(--paper-soft);
+  background-image: none;
+  border-color: var(--ink-ghost);
+}
+body.dark-mode .node-card.kind-theorem { background-color: var(--paper-soft); }
+body.dark-mode .node-card.kind-def     { background-color: var(--paper-soft); }
+body.dark-mode .node-card.kind-axiom   { background-color: var(--paper-deep); border-color: var(--ink-muted); }
+body.dark-mode .node-card.kind-opaque  { background-color: var(--paper-soft); }
+
 /* ---------- Layout shell ---------- */
 .shell {
   position: relative; z-index: 1;

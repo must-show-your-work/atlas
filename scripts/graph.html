@@ -124,6 +124,15 @@ body.dark-mode .node-card.kind-def     { background-color: var(--paper-soft); }
 body.dark-mode .node-card.kind-axiom   { background-color: var(--paper-deep); border-color: var(--ink-muted); }
 body.dark-mode .node-card.kind-opaque  { background-color: var(--paper-soft); }
 
+/* Inside the graph node, the card-pane shouldn't scroll — we
+   auto-size the node to fit its content (see `autoSizeCardsToFit`
+   in the cy init). Suppressing overflow here avoids the brief
+   moment between paint and measurement where the card-pane would
+   otherwise show an unscrollable scrollbar (the parent .node-card
+   has `pointer-events: none`, so the scrollbar wouldn't respond to
+   user input even if needed). */
+.node-card .card-pane { overflow: visible; }
+
 /* ---------- Layout shell ---------- */
 .shell {
   position: relative; z-index: 1;
@@ -2875,6 +2884,40 @@ async function main() {
       tpl: data => renderNodeCard(data),
     }]);
   }
+
+  // Auto-size each cytoscape node to fit its rendered card's natural
+  // content height. The initial CARD_W × CARD_H is a generous default;
+  // proofs (Pasch et al.) often need more vertical room. Measuring
+  // `.card-pane.scrollHeight` after the HTML label is rendered tells
+  // us the natural extent; we bump the node's `h` to match (never
+  // shrink — keeps the resize-handle override intact) and re-apply
+  // cytoscape's style + layout so neighbors don't overlap.
+  //
+  // Two-frame wait: one for the HTML label plugin to inject the DOM,
+  // one for KaTeX rendering + figure SVG layout to settle. Manual
+  // resize-handle sizes (in localStorage) take precedence; we skip
+  // those nodes entirely.
+  function autoSizeCardsToFit() {
+    let any = false;
+    const minH = CARD_H;
+    document.querySelectorAll('.node-card[data-node-id]').forEach(card => {
+      const id = card.dataset.nodeId;
+      const node = cy.getElementById(id);
+      if (!node || !node.length) return;
+      if (node.data('manualH')) return;  // user-set; respect it
+      const naturalH = card.scrollHeight;
+      const desired = Math.max(minH, naturalH + 48);
+      if (Math.abs((node.data('h') || 0) - desired) > 4) {
+        node.data('h', desired);
+        any = true;
+      }
+    });
+    if (any) {
+      cy.style().update();
+      cy.layout(elkOpts()).run();
+    }
+  }
+  requestAnimationFrame(() => requestAnimationFrame(autoSizeCardsToFit));
 
   // ---------- Per-card resize ----------
   // Drag the bottom-right grip to resize a card. The grip element

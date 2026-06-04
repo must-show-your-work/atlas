@@ -1,0 +1,554 @@
+/*
+ * card.css — shared editorial card styling for the atlas viewers.
+ *
+ * Defines the warm-paper / cream-ink palette (light + dark) and all
+ * `.card-*`, `.cb-*`, `.bn-*`, `.proof-*`, `.aux-*`, `.lhs-stack`,
+ * `.title-block`, `.ref-*`, `.notes-*`, `.flag-btn`-family rules used
+ * by `renderCard` in card.js. Included by both toc.html and graph.html.
+ *
+ * Dark mode is keyed on `body.dark-mode`; flipping that class on the
+ * document body switches every var to its dark-mode value, which
+ * propagates through the card via `currentColor` / `var(...)` refs.
+ */
+
+:root {
+  /* Light mode (default) — aged-paper editorial palette. */
+  --paper:        #f4ecd8;
+  --paper-soft:   #ede2c5;
+  --paper-deep:   #e0d2ad;
+  --ink:          #1c1410;
+  --ink-soft:     #4a3a2c;
+  --ink-muted:    #7a6852;
+  --ink-ghost:    #b8a685;
+  --accent:       #983327;
+  --accent-soft:  #c87a6a;
+  --teal:         #2c4f50;
+  --teal-soft:    #5b8688;
+}
+body.dark-mode {
+  /* Warm dark — keeps the editorial tone instead of going neutral grey.
+     Cream-ink on deep-brown paper, accent shifted lighter for contrast. */
+  --paper:        #1f1a14;
+  --paper-soft:   #2a221a;
+  --paper-deep:   #3a2f24;
+  --ink:          #e8d8b8;
+  --ink-soft:     #d0b896;
+  --ink-muted:    #a08560;
+  --ink-ghost:    #6b5840;
+  --accent:       #d27a6a;
+  --accent-soft:  #c87a6a;
+  --teal:         #7ba0a2;
+  --teal-soft:    #5b8688;
+}
+/* ---------- Right pane: card content (CSS-grid layout from atlas.svg) ----
+   Upper row: 2 columns (title/stmt/meta stacked left, figure on the right).
+   Proof row: spans the full width and uses an internal 3-col grid
+   (quoting / source / editor commentary), line-anchored.
+   Footer rows: refs + notes split (~7/12, ~5/12), then a full-width meta
+   strip + FQN.
+   The 12-col grid mirrors the wireframe's region ratios:
+     - upper split:    6 / 6 (title/stmt/meta vs figure)
+     - proof internal: 4 / 5 / 3
+     - refs/notes:     7 / 5
+*/
+.card-pane {
+  overflow-y: auto;
+  padding: 28px 48px 80px;
+  background: var(--paper);
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  grid-template-rows: auto auto auto auto auto auto auto;
+  grid-template-areas:
+    "head  head  head  head  head  head  head  head  head    head    head    head"
+    "lhs   lhs   lhs   lhs   lhs   lhs   lhs   lhs   figure  figure  figure  figure"
+    "proof proof proof proof proof proof proof proof proof   proof   proof   proof"
+    "refs  refs  refs  refs  refs  refs  refs  refs  notes   notes   notes   notes"
+    "footer footer footer footer footer footer footer footer footer footer footer footer";
+  column-gap: 24px;
+  row-gap: 16px;
+  align-content: start;
+}
+.card-pane.empty-pane {
+  /* Empty state pre-render: collapse the grid so the empty-state element
+     can use the full pane. */
+  display: grid; place-items: center;
+  grid-template-columns: 1fr; grid-template-rows: 1fr;
+  grid-template-areas: "empty";
+}
+.empty-state {
+  display: grid; place-items: center; height: 100%;
+  color: var(--ink-ghost); font-style: italic; font-size: 18px;
+}
+.card-head {
+  grid-area: head;
+  display: flex; align-items: baseline; gap: 8px;
+  font: 500 12px/1 "JetBrains Mono", monospace;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-muted);
+  margin: 0 0 4px 0;
+}
+.card-head-kind { color: var(--accent); }
+.card-head-sep { color: var(--ink-ghost); }
+.card-head-number { color: var(--teal); }
+.card-head-sorry {
+  margin-left: auto; background: var(--accent); color: var(--paper);
+  padding: 2px 8px; border-radius: 2px; font-size: 10px; letter-spacing: 0.16em;
+}
+.card-title {
+  grid-area: title;
+  font: 500 28px/1.18 "Fraunces", Georgia, serif;
+  letter-spacing: -0.012em; margin: 0; color: var(--ink);
+}
+.card-doc {
+  /* `doc` block lives inside the `meta` grid area when present, alongside
+     aliases/page chips etc. Style stays the same. */
+  font-style: italic; font-size: 15px; line-height: 1.55;
+  color: var(--ink-soft); margin: 0 0 12px 0;
+  padding-left: 14px; border-left: 2px solid var(--paper-deep);
+}
+.card-section { margin: 0; }
+
+/* Each card-section attaches itself to a grid area via data-section.
+   Hidden empty sections take no space; populated ones span their area. */
+/* Upper-left column: title + preface + statement + editorial notes
+   stack inside a flex column. The flex container takes the full
+   height of the row (whatever the figure tile is), and content sits
+   at the top — any leftover space falls below ednotes instead of
+   spreading evenly across rows. */
+.lhs-stack {
+  grid-area: lhs;
+  display: flex; flex-direction: column; gap: 14px;
+  align-self: stretch;
+}
+.card-section[data-section="figure"]      { grid-area: figure;
+  display: flex; align-items: flex-start; flex-direction: column;
+}
+.card-section[data-section="proof"]       { grid-area: proof; }
+.card-section[data-section="references"]  { grid-area: refs; }
+.card-section[data-section="notes"]       { grid-area: notes; }
+/* Title cluster sits at the top of the lhs stack (no grid area —
+   it's a flex item inside .lhs-stack). */
+.title-block .cb-name {
+  font: 500 28px/1.18 "Fraunces", Georgia, serif;
+  letter-spacing: -0.012em; color: var(--ink); margin: 0 0 4px 0;
+}
+.title-block .title-meta {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline;
+  margin-top: 4px;
+}
+.title-block .cb-aliases, .title-block .cb-tags { margin: 0; }
+.card-section-label {
+  font: 500 10px/1 "JetBrains Mono", monospace; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--ink-muted); margin-bottom: 8px;
+}
+.card-statement {
+  font-size: 18px; line-height: 1.5; overflow-x: auto;
+  padding: 10px 0;
+}
+.card-statement.empty { color: var(--ink-ghost); font-style: italic; font-size: 13px; }
+.card-statement .katex { font-size: 1em; }
+.card-figure.placeholder {
+  min-height: 60px; color: var(--ink-ghost); font-style: italic; font-size: 13px;
+  padding: 10px 0;
+}
+/* Figure occupies the 4-col cell (33% of card width) at its full
+   inner width. The lhs stack expands to 8 cols on the same row,
+   absorbing the horizontal space that was previously slack around
+   a centered 60% figure. */
+.card-figure svg { width: 100%; height: auto; color: var(--ink); }
+/* Figures drawn by `renderBare` (the atlas-bare SVG path) reach for
+   `currentColor` on all strokes / fills, so the figure inverts with
+   the host page mode. Text colors track `--ink` / `--ink-muted`
+   directly so figures match the surrounding prose. The CSS classes
+   match Figures/SVG.lean's class names. */
+.card-figure svg .txt,
+.card-figure svg .lbl {
+  font-family: "DejaVu Serif", "Fraunces", serif;
+  font-size: 22px;
+  fill: var(--ink);
+  stroke: var(--paper);
+  stroke-width: 4px;
+  paint-order: stroke;
+}
+.card-figure svg .lbl { font-style: italic; }
+.card-figure svg .callout {
+  font-family: "DejaVu Sans", "Inter", sans-serif;
+  font-size: 18px;
+  fill: var(--ink-muted);
+  stroke: var(--paper);
+  stroke-width: 4px;
+  paint-order: stroke;
+}
+
+.card-meta {
+  grid-area: footer;
+  margin: 0; padding-top: 12px;
+  border-top: 1px solid var(--paper-deep);
+  display: flex; gap: 12px; flex-wrap: wrap;
+  font: 11px/1 "JetBrains Mono", monospace; color: var(--ink-muted);
+  letter-spacing: 0.04em;
+}
+.card-meta-sep { color: var(--ink-ghost); }
+.card-fqn {
+  grid-area: footer;     /* sits under footer-meta via margin */
+  margin-top: 30px;      /* offset since both share footer area */
+  font: 10.5px/1.4 "JetBrains Mono", monospace;
+  color: var(--ink-ghost); letter-spacing: 0.02em; word-break: break-all;
+}
+
+/* References (in/out) */
+.refs-grid {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+}
+.refs-col-label {
+  font: 500 10px/1 "JetBrains Mono", monospace;
+  letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--ink-muted); margin-bottom: 6px;
+}
+.refs-empty { color: var(--ink-ghost); font-style: italic; font-size: 12px; }
+.ref-chip {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  padding: 3px 8px; margin: 2px 4px 2px 0;
+  background: var(--paper-soft); border: 1px solid var(--paper-deep);
+  border-radius: 3px; cursor: pointer; font-size: 12px;
+  line-height: 1.3; color: var(--ink-soft);
+}
+.ref-chip:hover { background: var(--paper-deep); }
+.ref-chip-id { font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--teal); }
+.ref-chip-title { font-style: italic; }
+
+/* Notes: per-decl reviewer scratchpad. Stored in /api/notes. */
+.notes-list {
+  display: flex; flex-direction: column; gap: 8px;
+  margin-bottom: 10px;
+}
+.note {
+  display: grid; grid-template-columns: max-content 1fr max-content;
+  gap: 10px; align-items: baseline;
+  padding: 8px 10px; background: var(--paper-soft);
+  border: 1px solid var(--paper-deep); border-radius: 3px;
+}
+.note-meta {
+  font: 10.5px/1.3 "JetBrains Mono", monospace; color: var(--ink-muted);
+  letter-spacing: 0.04em;
+}
+.note-body { font-size: 14px; line-height: 1.5; color: var(--ink); white-space: pre-wrap; }
+.note-delete {
+  background: none; border: none; cursor: pointer;
+  color: var(--ink-ghost); font-size: 13px; padding: 0 4px;
+}
+.note-delete:hover { color: var(--accent); }
+.notes-empty { color: var(--ink-ghost); font-style: italic; font-size: 12px; padding: 4px 0; }
+.note-composer { display: grid; gap: 6px; }
+.note-input {
+  width: 100%; min-height: 56px;
+  padding: 8px 10px; background: var(--paper);
+  border: 1px solid var(--paper-deep); border-radius: 3px;
+  font: 14px/1.5 "Fraunces", Georgia, serif; color: var(--ink);
+  resize: vertical;
+}
+.note-input:focus { outline: none; border-color: var(--ink-ghost); }
+.note-controls { display: flex; gap: 8px; align-items: center; }
+.note-save {
+  padding: 4px 12px; background: var(--teal); color: var(--paper);
+  border: none; border-radius: 2px; cursor: pointer;
+  font: 11px/1.4 "JetBrains Mono", monospace; letter-spacing: 0.04em;
+}
+.note-save:hover { background: var(--ink); }
+.note-save:disabled { background: var(--ink-ghost); cursor: default; }
+.note-hint {
+  font: 10.5px/1.4 "JetBrains Mono", monospace; color: var(--ink-ghost);
+  letter-spacing: 0.04em;
+}
+
+/* Flag-for-review (per-section, click to mark). Persists to /api/flags. */
+.card-section { position: relative; }
+.flag-btn {
+  position: absolute; top: 0; right: -4px;
+  background: none; border: 1px solid transparent;
+  color: var(--ink-ghost); cursor: pointer;
+  padding: 2px 6px; font: 11px/1 "JetBrains Mono", monospace;
+  border-radius: 2px; opacity: 0.3; transition: opacity 120ms;
+}
+.card-section:hover .flag-btn { opacity: 1; }
+.flag-btn:hover { color: var(--accent); border-color: var(--paper-deep); }
+.flag-btn.flagged {
+  opacity: 1; color: var(--accent); border-color: var(--accent);
+  background: var(--paper-soft);
+}
+.flag-btn.flagged::before { content: '⚑ '; }
+.card-section.flagged {
+  background: rgba(152, 51, 39, 0.04);
+  outline: 1px dashed rgba(152, 51, 39, 0.35);
+  outline-offset: 4px;
+}
+/* Production mode: no Flask API available (static viewer with embedded
+   kuzu, GH Pages, etc.). Hide reviewer-tool affordances. State stays
+   in-memory only — clicks still fire but never persist. */
+body.mode-production .flag-btn,
+body.mode-production .note-composer,
+body.mode-production .note-delete,
+body.mode-production .export-wireframe { display: none; }
+body.mode-production .bn-line { cursor: text; }
+body.mode-production .bn-line:hover { background: transparent; }
+
+/* ---------- 3-column proof grid ----------
+   Each row is one source line. Columns: quoting (LHS) | code (MID) |
+   editor markers (RHS). Markers without a matching line render as
+   empty cells. The MIDDLE column width is set by the source content
+   itself (its `<pre>` runs without wrap), so wide statements may
+   horizontally scroll within their cell.
+*/
+.proof-grid {
+  display: grid;
+  /* Middle column sizes to its content (no horizontal scroll on
+     source lines); side columns flex around it with a hard minimum
+     so they don't collapse to 0. */
+  grid-template-columns: minmax(8em, 1fr) auto minmax(8em, 1fr);
+  grid-auto-rows: auto;
+  border: 1px solid var(--paper-deep);
+  border-radius: 3px; background: var(--paper);
+  overflow: hidden;
+}
+/* Each marker cell explicitly sets `grid-row: <start> / <end>` so it
+   spans from its anchor down to the next marker in the same column
+   (or the end). Within that span, text flows freely; vertical
+   centering is anchored at the top via `align-self: start`. */
+/* Each cell type pins to a specific grid column. Without these,
+   `grid-auto-flow: row` packs all cells into column 1 in DOM order
+   and the three columns visually collapse. */
+.proof-col-quoting    { grid-column: 1; }
+.proof-col-source     { grid-column: 2; }
+.proof-col-commentary { grid-column: 3; }
+
+.proof-col-quoting,
+.proof-col-commentary,
+.proof-col-source {
+  min-width: 0;
+  /* Zero vertical padding — adjacent rows would otherwise compound
+     into a visible gap, which was reading as "an empty line" between
+     proof steps. Horizontal padding stays for readable column
+     gutters. */
+  padding: 0 10px;
+  align-self: start;
+}
+.proof-col-quoting,
+.proof-col-commentary {
+  font-size: 13px; line-height: 1.5;
+  color: var(--ink-soft);
+  /* `break-word` only breaks INSIDE a word as a last resort, so the
+     step / page / chip tokens stay atomic. */
+  overflow-wrap: break-word;
+}
+.proof-col-quoting {
+  background: var(--paper);
+  border-right: 1px solid var(--paper-deep);
+  font-style: italic;
+}
+.proof-col-commentary {
+  background: var(--paper);
+  border-left: 1px solid var(--paper-deep);
+}
+.proof-col-source {
+  background: var(--paper);
+  padding: 1px 12px;
+  font-family: "JetBrains Mono", monospace;
+  white-space: nowrap;
+}
+.proof-col-source .bn-code {
+  margin: 0; padding: 0;
+  background: transparent; color: var(--ink);
+  font: 400 12px/1.55 "JetBrains Mono", monospace;
+  /* Source preserves its source-file shape: never wrap a line that
+     wasn't already wrapped in the underlying .lean file. The middle
+     column sizes via `auto` to absorb the longest line. */
+  white-space: pre;
+}
+.proof-col-commentary .bn-marker { margin: 1px 0; }
+.bn-empty {
+  color: var(--ink-ghost); font-style: italic; font-size: 12px;
+  padding: 8px 0;
+}
+
+/* ---------- Side-by-side source (ported from graph.html) ---------- */
+.bn-source-plain {
+  background: #1c1410; color: #e9d6b8; border-radius: 3px;
+  padding: 14px 18px; font: 400 12.5px/1.55 "JetBrains Mono", monospace;
+  overflow-x: auto; max-height: 540px; overflow-y: auto;
+  white-space: pre;
+}
+
+/* Per-line flag targets. Each source line is wrapped in a `bn-line`
+   span tagged with the absolute file line number. Click toggles a
+   single-line flag; shift-click range-flags from the last clicked. */
+.bn-line {
+  display: inline-block; width: 100%;
+  padding-left: 6px; margin-left: -6px;
+  border-left: 3px solid transparent;
+  cursor: pointer; transition: background-color 80ms;
+}
+.bn-line:hover { background: rgba(152, 51, 39, 0.06); }
+.bn-line.flagged {
+  border-left-color: var(--accent);
+  background: rgba(152, 51, 39, 0.10);
+}
+.bn-source-plain .bn-line:hover { background: rgba(232, 220, 200, 0.08); }
+.bn-source-plain .bn-line.flagged {
+  border-left-color: #d27a6a;
+  background: rgba(210, 122, 106, 0.12);
+}
+.bn-grid {
+  border: 1px solid var(--paper-deep); border-radius: 3px;
+  background: var(--paper-soft); overflow: hidden;
+}
+.bn-seg {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr); gap: 0;
+  align-items: start;
+}
+.bn-seg + .bn-seg { border-top: 1px dotted rgba(101, 123, 131, 0.18); }
+.bn-seg-left {
+  padding: 0.55em 0.9em; background: var(--paper-soft);
+  border-right: 1px solid var(--paper-deep); font-size: 14px;
+  color: var(--ink-soft); line-height: 1.5;
+}
+.bn-seg-right { padding: 0.4em 0.7em; min-width: 0; }
+.bn-code {
+  background: transparent; color: var(--ink); margin: 0;
+  font: 400 12px/1.55 "JetBrains Mono", monospace;
+  white-space: pre; overflow-x: auto;
+}
+/* Two-column grid per marker so the chip and the text track in
+   consistent columns. The chip column has a fixed width per side
+   (LHS narrower for `(N)`-style step chips, RHS wider for words
+   like `motivation` / `intuition`) so the chip slot stays aligned
+   across all markers in the same column. */
+.bn-marker { display: grid; gap: 0.5em; align-items: baseline; }
+.proof-col-quoting    .bn-marker { grid-template-columns: 2.5em 1fr; }
+.proof-col-commentary .bn-marker { grid-template-columns: 6em   1fr; }
+.bn-marker-quoting .bn-text { font-style: italic; color: var(--ink-soft); }
+.bn-marker-comment { color: var(--ink-muted); }
+/* Match the parent column's `font-size: 13px` so quoting and comment
+   text run at the same scale — `0.86em` made comments visibly
+   smaller than quotes on the LHS. */
+.bn-marker-comment .bn-text { color: var(--ink-muted); }
+.bn-marker-pagebreak {
+  display: flex; align-items: center; gap: 0.6em;
+  color: var(--ink-ghost); font-style: italic; font-size: 11px;
+  letter-spacing: 0.08em; text-transform: uppercase;
+}
+.bn-marker-pagebreak .bn-rule { flex: 1; border-top: 1px solid var(--paper-deep); }
+.bn-marker-pagebreak .bn-pagebreak-label { white-space: nowrap; }
+.bn-step, .bn-page, .bn-chip {
+  font-family: "JetBrains Mono", monospace; font-size: 0.78em;
+  padding: 1px 6px; border-radius: 2px;
+  letter-spacing: 0.04em;
+  background: rgba(200, 122, 106, 0.18); color: var(--accent);
+  /* Stay an atomic unit even when the surrounding column has to
+     wrap text. Prevents `(4)` from splitting across lines. */
+  display: inline-block; white-space: nowrap;
+}
+/* All chips for a marker sit in column 1 of the per-marker grid. */
+.bn-chip-slot {
+  display: inline-flex; flex-direction: row; flex-wrap: wrap;
+  gap: 0.25em; align-items: baseline;
+}
+.bn-page { background: rgba(44, 79, 80, 0.15); color: var(--teal); }
+.bn-step-cont { background: rgba(184, 166, 133, 0.25); color: var(--ink-muted); }
+.bn-chip { background: rgba(184, 166, 133, 0.25); color: var(--ink-muted); }
+.bn-chip-idea       { background: rgba(181, 137,   0, 0.22); color: #93570a; }
+.bn-chip-intuition  { background: rgba(108, 113, 196, 0.18); color: #4a4e88; }
+.bn-chip-motivation { background: rgba(133, 153,   0, 0.20); color: #677500; }
+.bn-chip-caution    { background: rgba(203,  75,  22, 0.22); color: #a23a0e; }
+.bn-chip-aside      { background: rgba(147, 161, 161, 0.18); color: #657b83; }
+.bn-chip-cf         { background: rgba( 38, 139, 210, 0.18); color: #1a5f96; }
+.bn-chip-todo       { background: rgba(147, 161, 161, 0.18); color: #586e75; }
+.bn-chip-fixme      { background: rgba(220,  50,  47, 0.22); color: #93222b; }
+.bn-chip-detail     { background: rgba(108, 113, 196, 0.12); color: #6c71c4; font-style: italic; }
+.bn-chip-aux-figure {
+  background: rgba(44, 79, 80, 0.18); color: var(--teal);
+}
+/* Inline auxillary figure: a small SVG attached to the proof step
+   that introduced it. Sized to a fraction of the column so the SVG
+   doesn't dominate the proof flow. */
+.aux-figure-body { display: flex; flex-direction: column; gap: 4px; }
+.aux-figure-svg { display: flex; justify-content: center; }
+.aux-figure-svg svg {
+  max-width: 60%; height: auto; color: var(--ink);
+  background: var(--paper); border-radius: 3px;
+  border: 1px solid var(--paper-deep);
+}
+/* Aux figures share the same `.lbl` / `.txt` / `.callout` class
+   convention as `.card-figure` SVGs but live under `.aux-figure-svg`,
+   so the host CSS needs a parallel block — otherwise labels render
+   as tiny default-styled text and effectively disappear. Also force
+   stroke-width via CSS (overrides the inline SVG attribute) so lines
+   stay legible at the 60% display scale. */
+.aux-figure-svg svg .txt,
+.aux-figure-svg svg .lbl {
+  font-family: "DejaVu Serif", "Fraunces", serif;
+  font-size: 22px;
+  fill: var(--ink);
+  stroke: var(--paper);
+  stroke-width: 4px;
+  paint-order: stroke;
+}
+.aux-figure-svg svg .lbl { font-style: italic; }
+.aux-figure-svg svg .callout {
+  font-family: "DejaVu Sans", "Inter", sans-serif;
+  font-size: 18px;
+  fill: var(--ink-muted);
+  stroke: var(--paper);
+  stroke-width: 4px;
+  paint-order: stroke;
+}
+/* Segment / ray / line strokes: bump from the source SVG's 1.5 to
+   2.5 so they don't fade out at 60% display scale. CSS `stroke-width`
+   property wins over the SVG `stroke-width` attribute. */
+.aux-figure-svg svg line { stroke-width: 2.5; }
+.aux-figure-svg svg circle { r: 5; }
+.aux-figure-desc {
+  font-style: italic; color: var(--ink-muted); font-size: 0.9em;
+}
+
+/* Dark-mode chip foregrounds. The rgba *backgrounds* carry semantic
+   color tinting (yellow=idea, red=fixme, etc.) and still read on a
+   dark page; the saturated dark foregrounds however go invisible
+   against the warm-dark paper, so swap to lighter variants. */
+body.dark-mode .bn-chip-idea       { color: #e2b75c; }
+body.dark-mode .bn-chip-intuition  { color: #9da4d8; }
+body.dark-mode .bn-chip-motivation { color: #b8d066; }
+body.dark-mode .bn-chip-caution    { color: #e89865; }
+body.dark-mode .bn-chip-aside      { color: #b3c2c2; }
+body.dark-mode .bn-chip-cf         { color: #6fb5e0; }
+body.dark-mode .bn-chip-todo       { color: #b3c2c2; }
+body.dark-mode .bn-chip-fixme      { color: #f08a85; }
+body.dark-mode .bn-chip-detail     { color: #a3a8d8; }
+
+/* Lean source token colors (used by highlightLean) */
+.lean-kw    { color: var(--accent); font-weight: 500; }
+.lean-const { color: var(--teal); }
+.lean-var   { color: var(--ink); }
+.lean-num   { color: #93570a; }
+.lean-str   { color: #677500; }
+.lean-cmt   { color: var(--ink-ghost); font-style: italic; }
+.bn-source-plain .lean-kw    { color: #c87a6a; }
+.bn-source-plain .lean-const { color: #d2c5a3; }
+.bn-source-plain .lean-var   { color: #e9d6b8; }
+.bn-source-plain .lean-num   { color: #ddaf65; }
+.bn-source-plain .lean-str   { color: #8fa988; }
+.bn-source-plain .lean-cmt   { color: #7a6852; font-style: italic; }
+
+/* Commentary block */
+.card-commentary .cb-body { font-size: 14.5px; line-height: 1.5; color: var(--ink-soft); }
+.cb-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+.cb-name { font-weight: 500; color: var(--ink); }
+.cb-page { font: 11px/1 "JetBrains Mono", monospace; color: var(--teal); letter-spacing: 0.04em; }
+.cb-aliases, .cb-tags { font-size: 12px; color: var(--ink-muted); margin: 4px 0; }
+.cb-alias-chip, .cb-tag-chip {
+  display: inline-block; padding: 1px 7px; margin: 0 2px;
+  background: rgba(184, 166, 133, 0.25); border-radius: 2px;
+  font-family: "JetBrains Mono", monospace; font-size: 11px;
+}
+.cb-preface { font-style: italic; margin: 8px 0; padding-left: 12px; border-left: 2px solid var(--paper-deep); }
+.cb-notes { font-size: 13px; color: var(--ink-muted); margin-top: 6px; }
+.cb-notes-label { font-weight: 500; color: var(--accent); }

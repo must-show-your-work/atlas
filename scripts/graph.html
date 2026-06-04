@@ -832,33 +832,10 @@ body.dark-mode .node-card.kind-opaque  { background-color: var(--paper-soft); }
   border-radius: 2px;
   color: #586e75;
 }
-.cb-preface {
-  margin: 0;
-  padding: 0.5em 0.8em;
-  font-family: 'EB Garamond', 'Iowan Old Style', Georgia, serif;
-  font-style: italic;
-  font-size: 0.95em;
-  line-height: 1.45;
-  color: #073642;
-  border-left: 3px solid rgba(181, 137, 0, 0.6);
-  background: rgba(238, 232, 213, 0.5);
-}
-.cb-notes {
-  font-family: 'EB Garamond', 'Iowan Old Style', Georgia, serif;
-  font-size: 0.86em;
-  color: #586e75;
-  padding: 0.3em 0.5em;
-  background: rgba(255, 230, 200, 0.4);
-  border-left: 2px solid #cb4b16;
-}
-.cb-notes-label {
-  font-weight: 700;
-  font-size: 0.7em;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #cb4b16;
-  margin-right: 0.4em;
-}
+/* `.cb-preface` / `.cb-notes` / `.cb-notes-label` are now styled
+   centrally in card.css (var-based, dark-mode-aware). Removed the
+   graph-local overrides that hardcoded cream-paper backgrounds —
+   they read as a "weird light gray" against the dark canvas. */
 
 /* ---------- Book ⟷ Proof side-by-side (`quoting`/`comment`/`page break`) ---------- */
 .bn-grid {
@@ -2891,37 +2868,46 @@ async function main() {
 
   // Auto-size each cytoscape node to fit its rendered card's natural
   // content height. The initial CARD_W × CARD_H is a generous default;
-  // proofs (Pasch et al.) often need more vertical room. Measuring
-  // `.card-pane.scrollHeight` after the HTML label is rendered tells
-  // us the natural extent; we bump the node's `h` to match (never
-  // shrink — keeps the resize-handle override intact) and re-apply
-  // cytoscape's style + layout so neighbors don't overlap.
+  // proofs (Pasch et al.) often need more vertical room.
   //
-  // Two-frame wait: one for the HTML label plugin to inject the DOM,
-  // one for KaTeX rendering + figure SVG layout to settle. Manual
-  // resize-handle sizes (in localStorage) take precedence; we skip
-  // those nodes entirely.
+  // We measure in a hidden DOM container (outside cytoscape's
+  // transform) so the result is the unscaled natural extent — measuring
+  // the in-canvas card directly would pick up cytoscape's pan/zoom
+  // scaling and give wildly wrong values. KaTeX renders synchronously
+  // via `katex.renderToString`, so a single layout pass after insertion
+  // is enough.
   function autoSizeCardsToFit() {
+    const measure = document.createElement('div');
+    measure.style.cssText = 'position:absolute; left:-9999px; top:0; visibility:hidden; pointer-events:none;';
+    measure.style.width = CARD_W + 'px';
+    document.body.appendChild(measure);
     let any = false;
-    const minH = CARD_H;
-    document.querySelectorAll('.node-card[data-node-id]').forEach(card => {
-      const id = card.dataset.nodeId;
-      const node = cy.getElementById(id);
-      if (!node || !node.length) return;
-      if (node.data('manualH')) return;  // user-set; respect it
+    cy.nodes().forEach(n => {
+      const d = n.data();
+      if (d.manualH) return;  // resize-handle override wins
+      measure.innerHTML = renderNodeCard(d);
+      const card = measure.firstElementChild;
+      if (!card) return;
+      // Force height:auto so the inline `height:Hpx` doesn't clamp
+      // the measurement to the placeholder default.
+      card.style.height = 'auto';
       const naturalH = card.scrollHeight;
-      const desired = Math.max(minH, naturalH + 48);
-      if (Math.abs((node.data('h') || 0) - desired) > 4) {
-        node.data('h', desired);
+      const desired = Math.max(CARD_H, naturalH + 32);
+      if (Math.abs((d.h || 0) - desired) > 4) {
+        n.data('h', desired);
         any = true;
       }
     });
+    document.body.removeChild(measure);
     if (any) {
       cy.style().update();
       cy.layout(elkOpts()).run();
     }
   }
-  requestAnimationFrame(() => requestAnimationFrame(autoSizeCardsToFit));
+  // Defer to next frame so the cytoscape style + initial nodeHtmlLabel
+  // pass have a chance to run; otherwise renderNodeCard may not see
+  // window-scope helpers loaded by the plugin's first invocation.
+  requestAnimationFrame(autoSizeCardsToFit);
 
   // ---------- Per-card resize ----------
   // Drag the bottom-right grip to resize a card. The grip element

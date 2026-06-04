@@ -456,6 +456,252 @@ function renderCommentarySection(declId) {
     </section>`;
 }
 
+// ---------- Editorial card ----------
+
+// Wrap a section body in the standard card-section template. When
+// `withFlag` is true (toc viewer), a flag toggle button is rendered
+// for the per-section flag UI; graph viewer disables flags.
+function flaggableSection(name, label, body, withFlag = true) {
+  const safeName = escapeHtml(name);
+  const flagBtn = withFlag
+    ? `<button class="flag-btn" data-flag-section="${safeName}">flag</button>` : '';
+  return `
+    <section class="card-section" data-section="${safeName}">
+      ${flagBtn}
+      <div class="card-section-label">${escapeHtml(label)}</div>
+      ${body}
+    </section>`;
+}
+
+// Compute the set of absolute file lines we drop from the proof
+// source column. Two categories: the decl prelude (everything from
+// `atlas <kind> <num> "…"` / `theorem foo …` through the line with
+// `:= by`) and marker syntax (`quoting …` / `comment …` / `idea …`
+// / etc. — whose parsed text already shows in the LHS/RHS proof
+// columns). `auxillary { … }` blocks also elide here.
+const MARKER_KW = /^\s*(?:·\s+)?(quoting|comment|idea|intuition|motivation|caution|aside|cf|todo|fixme|detail|page_break)\b/;
+function computeMarkerLines(source, baseLine) {
+  const elided = new Set();
+  const lines = source.split('\n');
+
+  let preludeEnd = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const code = lines[i].replace(/--.*/, '').trimEnd();
+    if (code.endsWith(':= by')) { preludeEnd = i; break; }
+  }
+  for (let i = 0; i <= preludeEnd; i++) elided.add(baseLine + i);
+
+  // `auxillary { … }` brace-balanced spans.
+  const AUX_KW = /^\s*(?:·\s+)?auxillary\b/;
+  let ai = preludeEnd + 1;
+  while (ai < lines.length) {
+    if (!AUX_KW.test(lines[ai])) { ai++; continue; }
+    let depth = 0, sawOpen = false, inStr = false, k = ai;
+    while (k < lines.length) {
+      elided.add(baseLine + k);
+      const ln = lines[k];
+      for (let p = 0; p < ln.length; p++) {
+        const ch = ln[p];
+        if (ch === '\\') { p++; continue; }
+        if (ch === '"') { inStr = !inStr; continue; }
+        if (inStr) continue;
+        if (ch === '{') { depth++; sawOpen = true; }
+        else if (ch === '}') { depth--; }
+      }
+      if (sawOpen && depth === 0) break;
+      k++;
+    }
+    ai = k + 1;
+  }
+
+  let i = preludeEnd + 1;
+  while (i < lines.length) {
+    if (!MARKER_KW.test(lines[i])) { i++; continue; }
+    elided.add(baseLine + i);
+    let inString = false;
+    let scanIdx = 0;
+    let k = i;
+    while (k < lines.length) {
+      const ln = lines[k];
+      while (scanIdx < ln.length) {
+        const ch = ln[scanIdx];
+        if (ch === '\\') { scanIdx += 2; continue; }
+        if (ch === '"') {
+          inString = !inString;
+          scanIdx++;
+          if (!inString) break;
+          continue;
+        }
+        scanIdx++;
+      }
+      if (!inString) break;
+      k++;
+      if (k < lines.length) elided.add(baseLine + k);
+      scanIdx = 0;
+    }
+    i = k + 1;
+  }
+  return elided;
+}
+
+// Render the 3-column proof view (quoting / source / commentary) for
+// the decl. Markers and aux figures attach to source lines via
+// `grid-row` placement; aux figures span across empty rows beneath
+// their anchor to absorb vertical slack.
+function renderProofTriColumn(d) {
+  const source = d.source || '';
+  if (!source) return `<div class="bn-empty">no source</div>`;
+  const baseLine = d.line_start || 1;
+  const lines = source.split('\n');
+  const ms = (window.markersByDecl && window.markersByDecl[d.id]) || [];
+  const elided = computeMarkerLines(source, baseLine);
+  const lastAbs = baseLine + lines.length - 1;
+
+  const slideForward = (line) => {
+    let n = line;
+    while (n <= lastAbs && elided.has(n)) n++;
+    return n > lastAbs ? line : n;
+  };
+  const leftByLine = {};
+  const rightByLine = {};
+  for (const m of ms) {
+    const anchor = slideForward(m.line);
+    if (m._kind === 'quoting' || m._kind === 'page_break') {
+      (leftByLine[anchor] ||= []).push(m);
+    } else {
+      (rightByLine[anchor] ||= []).push(m);
+    }
+  }
+  for (const fig of (d.aux_figures || [])) {
+    const anchor = slideForward(fig.line);
+    (rightByLine[anchor] ||= []).push({
+      _kind: 'aux-figure',
+      line: fig.line,
+      svg: fig.svg,
+      description: fig.description,
+    });
+  }
+
+  const kept = [];
+  let prevBlank = false;
+  for (let i = 0; i < lines.length; i++) {
+    const abs = baseLine + i;
+    if (elided.has(abs)) { prevBlank = false; continue; }
+    const isBlank = lines[i].trim() === '';
+    if (isBlank && prevBlank) continue;
+    kept.push({ abs, line: lines[i], isBlank });
+    prevBlank = isBlank;
+  }
+  while (kept.length && kept[0].isBlank) kept.shift();
+  while (kept.length && kept[kept.length-1].isBlank) kept.pop();
+
+  const sourceCells = kept.map(({ abs, line }, i) => {
+    const codeInner = highlightLean(line) || '&nbsp;';
+    const gridRow = i + 1;
+    return `<div class="proof-col-source" style="grid-row:${gridRow}">`
+         + `<pre class="bn-code"><span class="bn-line" data-line="${abs}">${codeInner}</span></pre>`
+         + `</div>`;
+  });
+
+  const rowOfAbs = new Map(kept.map(({ abs }, i) => [abs, i + 1]));
+  const lastRowPlusOne = kept.length + 1;
+  function placeMarkers(byLine, colClass, spanAuxToNext) {
+    const anchors = Object.keys(byLine).map(Number).sort((a, b) => a - b);
+    return anchors.map((anchor, i) => {
+      const startRow = rowOfAbs.get(anchor);
+      if (!startRow) return '';
+      const items = byLine[anchor];
+      const hasAuxFigure = items.some(it => it._kind === 'aux-figure');
+      let style = `grid-row:${startRow}`;
+      if (spanAuxToNext && hasAuxFigure) {
+        const next = anchors[i + 1];
+        const endRow = (next != null && rowOfAbs.get(next)) || lastRowPlusOne;
+        if (endRow > startRow + 1) {
+          style = `grid-row:${startRow} / ${endRow}`;
+        }
+      }
+      const inner = items.map(renderMarkerLeft).join('');
+      return `<div class="${colClass}" style="${style}">${inner}</div>`;
+    }).join('');
+  }
+  const leftCells  = placeMarkers(leftByLine,  'proof-col-quoting', false);
+  const rightCells = placeMarkers(rightByLine, 'proof-col-commentary', true);
+
+  return `<div class="proof-grid">${sourceCells.join('')}${leftCells}${rightCells}</div>`;
+}
+
+// Render the full editorial card. `opts.withFlags` controls whether
+// the per-section flag UI is emitted (toc viewer wants it, graph
+// viewer doesn't). `opts.refsHtml` and `opts.extraSections` slot in
+// host-page-specific sections (the toc viewer plugs its references
+// + notes blocks here; the graph viewer omits them).
+function renderCard(d, opts = {}) {
+  const {
+    withFlags = true,
+    refsHtml = '',
+    extraSections = [],
+  } = opts;
+  const typeTexHtml = d.type_tex ? renderTypeHtmlFromTex(d.type_tex) : '';
+  const cb = (window.commentaryByDecl && window.commentaryByDecl[d.id]) || null;
+
+  const statementBody = `<div class="card-statement${typeTexHtml ? '' : ' empty'}">${typeTexHtml || '(no type signature)'}</div>`;
+  const figureBody = d.figure_svg
+    ? `<div class="card-figure">${d.figure_svg}</div>`
+    : `<div class="card-figure placeholder">no figure</div>`;
+
+  const titleName = (cb && cb.name) || d.atlas_title || d.label;
+  const titleMetaChips = [];
+  if (cb && cb.page) {
+    const pe = cb.page_end ? '–' + escapeHtml(cb.page_end) : '';
+    titleMetaChips.push(`<span class="cb-page">📖 p.${escapeHtml(cb.page)}${pe}</span>`);
+  }
+  if (cb && cb.aliases && cb.aliases.length) {
+    titleMetaChips.push(`<div class="cb-aliases">aka: ${cb.aliases.map(a =>
+      `<span class="cb-alias-chip">${escapeHtml(a)}</span>`).join(' ')}</div>`);
+  }
+  if (cb && cb.tags && cb.tags.length) {
+    titleMetaChips.push(`<div class="cb-tags">${cb.tags.map(t =>
+      `<span class="cb-tag-chip">#${escapeHtml(t)}</span>`).join(' ')}</div>`);
+  }
+  const titleBlock = `
+    <section class="title-block">
+      <div class="cb-name">${escapeHtml(titleName)}</div>
+      ${titleMetaChips.length ? `<div class="title-meta">${titleMetaChips.join('')}</div>` : ''}
+      ${d.doc ? `<div class="card-doc">${escapeHtml(d.doc)}</div>` : ''}
+    </section>`;
+
+  const prefaceBody = (cb && cb.preface)
+    ? `<blockquote class="cb-preface">${escapeHtml(cb.preface)}</blockquote>`
+    : '<div class="bn-empty">no preface</div>';
+  const ednotesBody = (cb && cb.notes)
+    ? `<div class="cb-notes">${escapeHtml(cb.notes)}</div>`
+    : '<div class="bn-empty">no editorial notes</div>';
+
+  return `
+    <header class="card-head">
+      <span class="card-head-kind">§ ${escapeHtml(d.atlas_kind || d.kind)}</span>
+      ${d.atlas_number ? `<span class="card-head-sep">·</span><span class="card-head-number">${escapeHtml(d.atlas_number)}</span>` : ''}
+      ${d.has_sorry ? '<span class="card-head-sorry">sorry</span>' : ''}
+    </header>
+    <div class="lhs-stack">
+      ${titleBlock}
+      ${flaggableSection('preface',   'preface',   prefaceBody,   withFlags)}
+      ${flaggableSection('statement', 'statement', statementBody, withFlags)}
+      ${flaggableSection('ednotes',   'ed. notes', ednotesBody,   withFlags)}
+    </div>
+    ${flaggableSection('figure', 'figure', figureBody, withFlags)}
+    ${flaggableSection('proof',  'proof',  renderProofTriColumn(d), withFlags)}
+    ${refsHtml}
+    ${extraSections.join('')}
+
+    <footer class="card-meta">
+      <span>${escapeHtml(d.module || '')}</span>
+      ${d.line_start ? `<span class="card-meta-sep">·</span><span>L${d.line_start}${d.line_end && d.line_end !== d.line_start ? `–${d.line_end}` : ''}</span>` : ''}
+      <span class="card-meta-sep">·</span><span>${escapeHtml(d.file || '')}</span>
+      <div class="card-fqn">${escapeHtml(d.id)}</div>
+    </footer>`;
+}
+
 // ---------- Public API ----------
 
 window.AtlasCard = {
@@ -464,6 +710,8 @@ window.AtlasCard = {
   texToKatexHtml, renderTypeHtmlFromTex,
   renderMarkerLeft, renderSourceWithMarkers, wrapLines,
   renderCommentarySection,
+  flaggableSection, computeMarkerLines, renderProofTriColumn, renderCard,
+  MARKER_KW,
 };
 
 })();

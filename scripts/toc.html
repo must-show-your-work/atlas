@@ -22,7 +22,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,300..900,0..100,0..1;1,9..144,300..900,0..100,0..1&family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="./vendor/katex/katex.min.css?v=local-10">
 <script src="./vendor/katex/katex.min.js?v=local-10"></script>
-<script src="./card.js?v=29"></script>
+<script src="./card.js?v=30"></script>
 
 <style>
 :root {
@@ -449,24 +449,6 @@ body.mode-production .bn-line:hover { background: transparent; }
 .proof-col-commentary {
   background: var(--paper);
   border-left: 1px solid var(--paper-deep);
-  /* Anchor for absolute-positioned aux figures (below). */
-  position: relative;
-}
-/* When a commentary cell spans multiple rows (because it carries an
-   aux figure — see `placeMarkers` in toc.html), pull the figure out
-   of normal flow so the cell's content height is 0 and the cell takes
-   its span-derived height purely from the source-column rows below
-   the anchor. The figure then floats over those rows, capped at
-   `max-height: 100%` of the cell, only growing the row beneath when
-   the SVG is genuinely taller than the available empty space. */
-.proof-col-commentary > .bn-marker-aux-figure {
-  position: absolute;
-  top: 0; left: 10px; right: 10px;
-  max-height: 100%;
-  overflow: hidden;
-}
-.proof-col-commentary > .bn-marker-aux-figure .aux-figure-svg svg {
-  max-height: 100%;
 }
 .proof-col-source {
   background: var(--paper);

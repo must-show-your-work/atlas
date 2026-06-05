@@ -49,11 +49,8 @@ lean_lib «Mereology» where
 -- (aesop/batteries/plausible/etc.) win the manifest resolution. Lake
 -- warns about version skew otherwise.
 
--- figures: declarative-figure IR + multi-backend renderer. Atlas
--- depends on it for the `direct_rep` field's Construction-typed
--- argument and for the SVG output that drives the figure widget.
--- Sibling repo at ../figures (same workspace as shed).
-require figures from "../figures"
+require figures from git
+  "https://github.com/must-show-your-work/figures" @ "main"
 
 -- SubVerso powers `dumptactics` (per-decl source highlight + tactic
 -- occurrence extraction). Pinned to a recent main HEAD because the

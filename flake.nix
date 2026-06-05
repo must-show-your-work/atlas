@@ -2,9 +2,7 @@
   description = "atlas -- Lean 4 library";
 
   inputs = {
-    # Host-specific absolute path: nix can't follow `path:../shed` once
-    # this tree is copied into /nix/store. Long-term, publish shed.
-    shed.url = "path:/storage/code/must-show-your-work/shed";
+    shed.url = "github:must-show-your-work/shed";
     nixpkgs.follows = "shed/nixpkgs";
     flake-parts.follows = "shed/flake-parts";
   };

@@ -124,14 +124,17 @@
         "nixpkgs": "nixpkgs"
       },
       "locked": {
-        "lastModified": 1780089030,
-        "narHash": "sha256-AguLJW6vkr8Bp5FhAzJX1qVBYtFldyuib72JRIBR45s=",
-        "path": "/storage/code/must-show-your-work/shed",
-        "type": "path"
+        "lastModified": 1780670838,
+        "narHash": "sha256-c0bS7B4bFTSEyDXsm3EQEGg/xWOUfeWFHb7LK6zgtdk=",
+        "owner": "must-show-your-work",
+        "repo": "shed",
+        "rev": "10b3d7991aac5af0c486caa9accaef68c9f49dd7",
+        "type": "github"
       },
       "original": {
-        "path": "/storage/code/must-show-your-work/shed",
-        "type": "path"
+        "owner": "must-show-your-work",
+        "repo": "shed",
+        "type": "github"
       }
     }
   },

@@ -249,6 +249,27 @@ initialize figureProgressionHookRef :
     IO.Ref (String → String → Name → Lean.Syntax → Elab.Tactic.TacticM Unit) ←
   IO.mkRef (fun _ _ _ _ => pure ())
 
+/-- Per-step hook called BEFORE each tactic step inside `with_atlas_panels`.
+Fires with the current live `TacticM` state — so libraries can read the
+goal/local context as it stands ENTERING that step. Args: (kind, num,
+step-syntax). Default no-op. -/
+initialize figureProgressionPerStepHookRef :
+    IO.Ref (String → String → Lean.Syntax → Elab.Tactic.TacticM Unit) ←
+  IO.mkRef (fun _ _ _ => pure ())
+
+/-- Walk a tacticSeq into its individual top-level steps. Used by
+`with_atlas_panels`'s step-by-step elab so the per-step hook can fire
+between tactics. -/
+private partial def tacticSeqSteps (stx : Lean.Syntax) : Array Lean.Syntax :=
+  if stx.getKind == ``Lean.Parser.Tactic.tacticSeq
+     || stx.getKind == ``Lean.Parser.Tactic.tacticSeq1Indented
+     || stx.getKind == `null then
+    stx.getArgs.foldl (fun acc s => acc ++ tacticSeqSteps s) #[]
+  else
+    match stx with
+    | .node _ _ _ => #[stx]
+    | _           => #[]
+
 -- `with_atlas_panels` syntax token lives in `Atlas/Panels.lean` so
 -- `Atlas/Command.lean` can emit it without pulling in this file's
 -- ProofWidgets dependency. Elaboration stays here — it's what binds the
@@ -265,9 +286,20 @@ def elabWithAtlasPanels : Tactic := fun stx => match stx with
       (hash HtmlDisplayPanel.javascript)
       (return Lean.Json.mkObj [("html", Atlas.htmlToJson combinedHtml)])
       seq
-    evalTacticSeq seq
+    -- Walk steps individually so the per-step hook can fire between
+    -- them with live TacticM state (post-hoc InfoTree walk doesn't see
+    -- the inner trees from here — they get pushed up to command scope).
+    -- DSL-only consumers can ignore the per-step ref; it's a no-op by
+    -- default.
+    let perStep ← figureProgressionPerStepHookRef.get
+    let kStr := k.getString
+    let nStr := n.getString
+    for step in tacticSeqSteps seq do
+      try perStep kStr nStr step
+      catch _ => pure ()
+      evalTactic step
     let hook ← figureProgressionHookRef.get
-    hook k.getString n.getString declName seq
+    hook kStr nStr declName seq
   | _ => throwUnsupportedSyntax
 
 /-- `#refs <name>` — display atlas references of `<name>` in the InfoView. -/

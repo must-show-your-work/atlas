@@ -25,7 +25,7 @@
    "type": "git",
    "subDir": null,
    "scope": "",
-   "rev": "5a23a3cb19c2e2cc5768f10a3d29658b1964de8c",
+   "rev": "0c5c8dc33186c62e87d9ff40705f2df29e2d0c58",
    "name": "figures",
    "manifestFile": "lake-manifest.json",
    "inputRev": "main",
